@@ -14,10 +14,10 @@ HTTPS) and systemd. Ready-made config lives in [`deploy/`](deploy/).
 ## 1. Put the code on the server
 
 ```bash
-sudo mkdir -p /opt/phantom-gallery
-sudo useradd --system --home /opt/phantom-gallery --shell /usr/sbin/nologin gallery
-# copy the project into /opt/phantom-gallery (scp, git clone, rsync, etc.)
-sudo chown -R gallery:gallery /opt/phantom-gallery
+sudo mkdir -p /opt/chicken-gallery
+sudo useradd --system --home /opt/chicken-gallery --shell /usr/sbin/nologin gallery
+# copy the project into /opt/chicken-gallery (scp, git clone, rsync, etc.)
+sudo chown -R gallery:gallery /opt/chicken-gallery
 ```
 
 There are **no npm dependencies to install** — the server uses only the Node
@@ -26,7 +26,7 @@ standard library, and Three.js/GSAP are vendored under `js/vendor/`.
 ## 2. Configure environment
 
 ```bash
-cd /opt/phantom-gallery
+cd /opt/chicken-gallery
 sudo -u gallery cp .env.example .env
 sudo -u gallery nano .env
 # Restrict the env file — it must not be world-readable
@@ -51,10 +51,10 @@ MIN_PASSWORD_LEN=8
 ## 3. Run as a service
 
 ```bash
-sudo cp deploy/phantom-gallery.service /etc/systemd/system/
+sudo cp deploy/chicken-gallery.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now phantom-gallery
-sudo systemctl status phantom-gallery        # should be active (running)
+sudo systemctl enable --now chicken-gallery
+sudo systemctl status chicken-gallery        # should be active (running)
 curl -s http://127.0.0.1:8173/healthz        # -> {"ok":true}
 ```
 
@@ -103,12 +103,12 @@ sudo ufw enable
 ## 6. Backups
 
 ```bash
-sudo cp deploy/phantom-gallery-backup.service /etc/systemd/system/
-sudo cp deploy/phantom-gallery-backup.timer   /etc/systemd/system/
+sudo cp deploy/chicken-gallery-backup.service /etc/systemd/system/
+sudo cp deploy/chicken-gallery-backup.timer   /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now phantom-gallery-backup.timer
-sudo systemctl start phantom-gallery-backup.service   # test it once
-ls /opt/phantom-gallery/backups/                      # timestamped snapshot
+sudo systemctl enable --now chicken-gallery-backup.timer
+sudo systemctl start chicken-gallery-backup.service   # test it once
+ls /opt/chicken-gallery/backups/                      # timestamped snapshot
 ```
 
 Snapshots of `data/` + `assets/` are written daily at 03:30; the 14 most recent
@@ -118,10 +118,10 @@ disaster recovery.
 ## 7. Updating
 
 ```bash
-cd /opt/phantom-gallery
+cd /opt/chicken-gallery
 # pull/copy new code
 sudo chown -R gallery:gallery .
-sudo systemctl restart phantom-gallery
+sudo systemctl restart chicken-gallery
 ```
 
 `data/` and `assets/` are untouched by code updates. Run `npm test` before
@@ -137,7 +137,7 @@ app code is fully cross-platform.
 ## Pre-launch checklist
 
 - [ ] `.env` set with `HOST=127.0.0.1`, `TRUST_PROXY=1`, your `ADMIN_USERNAMES`
-- [ ] `systemctl status phantom-gallery` is active; `/healthz` returns ok
+- [ ] `systemctl status chicken-gallery` is active; `/healthz` returns ok
 - [ ] HTTPS works; `http://` redirects to `https://`
 - [ ] Port 8173 is **not** reachable from outside (`curl http://SERVER_IP:8173` from elsewhere fails)
 - [ ] Backup timer enabled and a test snapshot exists
