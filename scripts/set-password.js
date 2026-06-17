@@ -1,5 +1,5 @@
 'use strict';
-/* Reset a user's password from the server console — for initial admin setup or
+/* Reset a user's password from the server console - for initial admin setup or
    lockout recovery. The new password is read from STDIN so it is never stored in
    shell history. All of the user's existing sessions are revoked.
 

@@ -1,14 +1,14 @@
 # Deploying Chicken Butt Gallery to the open internet
 
 This app is a single Node.js process that serves both the API and the static
-frontend. It must run **behind a TLS-terminating reverse proxy** — never expose
+frontend. It must run **behind a TLS-terminating reverse proxy** - never expose
 the Node port directly. The steps below use a Linux VPS with Caddy (automatic
 HTTPS) and systemd. Ready-made config lives in [`deploy/`](deploy/).
 
 ## 0. Prerequisites
 
 - A domain name with a DNS `A`/`AAAA` record pointing at your server.
-- A Linux server (Ubuntu/Debian assumed) with **Node.js ≥ 18** installed.
+- A Linux server (Ubuntu/Debian assumed) with **Node.js >= 18** installed.
 - Ports **80** and **443** open to the internet; port **8173** open only to localhost.
 
 ## 1. Put the code on the server
@@ -20,7 +20,7 @@ sudo useradd --system --home /opt/chicken-gallery --shell /usr/sbin/nologin gall
 sudo chown -R gallery:gallery /opt/chicken-gallery
 ```
 
-There are **no npm dependencies to install** — the server uses only the Node
+There are **no npm dependencies to install** - the server uses only the Node
 standard library, and Three.js/GSAP are vendored under `js/vendor/`.
 
 ## 2. Configure environment
@@ -29,7 +29,7 @@ standard library, and Three.js/GSAP are vendored under `js/vendor/`.
 cd /opt/chicken-gallery
 sudo -u gallery cp .env.example .env
 sudo -u gallery nano .env
-# Restrict the env file — it must not be world-readable
+# Restrict the env file - it must not be world-readable
 sudo chmod 600 .env && sudo chown gallery:gallery .env
 ```
 
@@ -61,7 +61,7 @@ curl -s http://127.0.0.1:8173/healthz        # -> {"ok":true}
 The unit is sandboxed (`ProtectSystem=strict`, `NoNewPrivileges`, write access
 limited to `data/`, `assets/`, `backups/`).
 
-## 4. TLS reverse proxy (Caddy — automatic HTTPS)
+## 4. TLS reverse proxy (Caddy - automatic HTTPS)
 
 ```bash
 # install Caddy: https://caddyserver.com/docs/install
@@ -71,7 +71,7 @@ sudo systemctl reload caddy
 ```
 
 Caddy obtains and renews a Let's Encrypt certificate automatically. Visit
-`https://your-domain` — you should see the gallery.
+`https://your-domain` - you should see the gallery.
 
 <details>
 <summary>nginx alternative</summary>
@@ -89,7 +89,7 @@ server {
     }
 }
 ```
-Use certbot for the certificate. Set `client_max_body_size` ≥ 16m or large uploads 413.
+Use certbot for the certificate. Set `client_max_body_size` >= 16m or large uploads 413.
 </details>
 
 ## 5. Firewall
@@ -97,7 +97,7 @@ Use certbot for the certificate. Set `client_max_body_size` ≥ 16m or large upl
 ```bash
 sudo ufw allow 80,443/tcp
 sudo ufw enable
-# do NOT allow 8173 — it stays bound to 127.0.0.1
+# do NOT allow 8173 - it stays bound to 127.0.0.1
 ```
 
 ## 6. Backups

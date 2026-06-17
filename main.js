@@ -53,7 +53,7 @@ function buildPool() {
 }
 
 /* ============================================================
-   GALLERY GEOMETRY — interior of a sphere
+   GALLERY GEOMETRY - interior of a sphere
    ============================================================ */
 const BASE_COLS = 42;
 const BASE_ROWS = 14;
@@ -116,7 +116,7 @@ renderer.setClearColor(0x000000, 1);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 250);
 
-/* keep the drawing buffer in sync with the canvas's real CSS box —
+/* keep the drawing buffer in sync with the canvas's real CSS box -
    handles window resizes, browser zoom, DPI changes, scrollbars, etc. */
 function syncSize() {
   const w = canvas.clientWidth || window.innerWidth;
@@ -135,7 +135,7 @@ syncSize();
 window.addEventListener('resize', markSceneDirty, { passive: true });
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 
-/* scroll state — lenis-style: targets + exponentially smoothed current */
+/* scroll state - lenis-style: targets + exponentially smoothed current */
 const state = { tx: 0, ty: 0, cx: 0, cy: 0, vx: 0, vy: 0 };
 const gal = { fade: 0, others: 1 };
 const ui = { locked: false };
@@ -395,7 +395,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ============================================================
-   INPUT — drag with momentum, wheel, click vs drag
+   INPUT - drag with momentum, wheel, click vs drag
    ============================================================ */
 const drag = { active: false, id: null, px: 0, py: 0, t: 0, lastT: 0, moved: 0 };
 
@@ -511,17 +511,17 @@ function fillDetail(p) {
   pinBtn.textContent = p.pinned ? 'UNPIN PHOTO' : 'PIN PHOTO';
   document.getElementById('d-edit-form').hidden = true;
   if (p.community) {
-    dEls.clientTop.textContent = `@${p.username} — VIEW PROFILE ↗`;
+    dEls.clientTop.textContent = `@${p.username} - VIEW PROFILE ↗`;
     dEls.clientTop.style.textDecoration = 'underline';
     dEls.clientTop.onclick = () => { closeProject(); openPeople(p.username); };
-    dEls.p1.textContent = p.caption || `"${p.title}" was posted to the wall by @${p.username} in ${p.year}. Every photo here belongs to someone — tap their name above to see who they are and what else they've shared.`;
+    dEls.p1.textContent = p.caption || `"${p.title}" was posted to the wall by @${p.username} in ${p.year}. Every photo here belongs to someone - tap their name above to see who they are and what else they've shared.`;
     dEls.p2.textContent = `Posted by @${p.username}. Want your own photos up here? Hit the + button in the bottom-left corner of the wall and post whatever you want. The sphere has room for everyone.`;
   } else {
-    dEls.clientTop.textContent = `${p.client} — ${p.year}`;
+    dEls.clientTop.textContent = `${p.client} - ${p.year}`;
     dEls.clientTop.style.textDecoration = 'none';
     dEls.clientTop.onclick = null;
     dEls.p1.textContent = `${p.title} is a ${p.cat.toLowerCase()}-led collaboration with ${p.client}, built to translate the brand's ambition into a living, breathing digital artefact. We prototyped early, tested often, and let the craft carry the idea from first sketch to final ship.`;
-    dEls.p2.textContent = `Spanning ${[p.cat, ...p.tags].join(', ').toLowerCase()}, the work reached audiences across every touchpoint that matters. The result: a piece of the internet people actually remember — measured not just in numbers, but in the messages that landed in our inbox the week it launched.`;
+    dEls.p2.textContent = `Spanning ${[p.cat, ...p.tags].join(', ').toLowerCase()}, the work reached audiences across every touchpoint that matters. The result: a piece of the internet people actually remember - measured not just in numbers, but in the messages that landed in our inbox the week it launched.`;
   }
   renderSocial(p);
 }
@@ -529,7 +529,7 @@ function fillDetail(p) {
 let detailFromOverlay = false;
 
 /* open the detail page for a project object directly (from an overlay:
-   album page, flat grid, deep link) — no sphere camera move */
+   album page, flat grid, deep link) - no sphere camera move */
 function openDetailFor(project, updateHash = true) {
   if (!project) return;
   if (updateHash && project.postId) setRoute(photoRoute(project.postId));
@@ -620,7 +620,7 @@ function buildScopeChips(container, selected = []) {
   const all = [...new Set([...roster, ...selected])];
   const active = new Set(selected.filter(t => all.includes(t)));
   if (!all.length) {
-    container.innerHTML = '<span class="mono dim">NO SCOPES YET — AN ADMIN CAN ADD THEM IN THE COMMUNITY ADMIN PANEL.</span>';
+    container.innerHTML = '<span class="mono dim">NO SCOPES YET - AN ADMIN CAN ADD THEM IN THE COMMUNITY ADMIN PANEL.</span>';
     return () => [...active];
   }
   all.forEach(t => {
@@ -873,7 +873,7 @@ document.getElementById('fp-clear').addEventListener('click', () => {
 });
 
 /* ============================================================
-   HUD — nav pill, sound, clocks, view toggles
+   HUD - nav pill, sound, clocks, view toggles
    ============================================================ */
 const navBtns = [...document.querySelectorAll('.pill-nav button')];
 const pillBg = document.querySelector('.pill-bg');
@@ -898,7 +898,7 @@ viewBtns.forEach(b => b.addEventListener('click', () => {
   openFlatView(b.id === 'view-list' ? 'list' : 'grid');
 }));
 
-/* sound — click opens a horizontal volume slider; drives an ambient hum */
+/* sound - click opens a horizontal volume slider; drives an ambient hum */
 /* ============================================================
    FLAT GRID / LIST VIEW
    ============================================================ */
@@ -974,7 +974,7 @@ let gainNode = null;
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  // looped brown noise through a low-pass — soft "air" ambience
+  // looped brown noise through a low-pass - soft "air" ambience
   const len = audioCtx.sampleRate * 4;
   const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
   const d = buf.getChannelData(0);
@@ -1047,7 +1047,7 @@ async function refreshCommunity() {
   }
   try { communityPosts = await api.call('GET', '/api/photos'); }
   catch { communityPosts = []; }
-  ensureUserMeta(true);   // refresh username → {displayName, avatar} for comments
+  ensureUserMeta(true);   // refresh username -> {displayName, avatar} for comments
 }
 
 /* rebuild the wall in place (after a new photo is posted) */
@@ -1085,7 +1085,7 @@ async function init() {
     onComplete: () => { document.getElementById('loader').remove(); },
   });
 
-  // intro — tiles fly in from depth while the view sweeps to rest
+  // intro - tiles fly in from depth while the view sweeps to rest
   state.cx = state.tx = layout.cell * 2.0;
   state.cy = state.ty = -layout.cell * 0.7;
   state.tx = 0; state.ty = 0;
@@ -1188,7 +1188,7 @@ async function handleAuthResult(r) {
     document.getElementById('auth-code-err').textContent = '';
     document.getElementById('auth-remember').checked = false;
     document.getElementById('auth-code-msg').textContent =
-      (r.step === 'verify' ? 'Verify your email — enter the 6-digit code we sent' : 'Enter the 6-digit code we emailed')
+      (r.step === 'verify' ? 'Verify your email - enter the 6-digit code we sent' : 'Enter the 6-digit code we emailed')
       + (r.email ? ` to ${r.email}.` : '.');
     showAuthStep('code');
   }
@@ -2064,7 +2064,7 @@ function renderPeople() {
     b.innerHTML =
       `<span class="avatar">${avatarInner(u)}</span>` +
       `<span><span class="p-name">${esc(u.displayName)}</span><br>` +
-      `<span class="mono dim p-sub">@${esc(u.username)} — ${u.photoCount} PHOTO${u.photoCount === 1 ? '' : 'S'}</span></span>`;
+      `<span class="mono dim p-sub">@${esc(u.username)} - ${u.photoCount} PHOTO${u.photoCount === 1 ? '' : 'S'}</span></span>`;
     b.addEventListener('click', () => showProfile(u.username));
     peopleGrid.appendChild(b);
   });
@@ -2369,9 +2369,9 @@ async function showProfile(username, updateHash = true) {
   document.getElementById('profile-name').textContent = p.displayName;
   document.getElementById('profile-username').textContent = '@' + p.username;
   document.getElementById('profile-meta').textContent =
-    `JOINED ${new Date(p.joined).getFullYear()} — ${p.photoCount} PHOTO${p.photoCount === 1 ? '' : 'S'}` +
-    (p.location ? ` — ${p.location.toUpperCase()}` : '');
-  document.getElementById('profile-bio').textContent = p.bio || (own ? 'No bio yet — hit EDIT PROFILE to add one.' : '');
+    `JOINED ${new Date(p.joined).getFullYear()} - ${p.photoCount} PHOTO${p.photoCount === 1 ? '' : 'S'}` +
+    (p.location ? ` - ${p.location.toUpperCase()}` : '');
+  document.getElementById('profile-bio').textContent = p.bio || (own ? 'No bio yet - hit EDIT PROFILE to add one.' : '');
   const links = document.getElementById('profile-links');
   links.innerHTML = '';
   if (p.website) {
@@ -2539,7 +2539,7 @@ document.getElementById('people-close').addEventListener('click', closePeople);
 document.getElementById('profile-back').addEventListener('click', showPeopleList);
 
 /* ============================================================
-   UPLOAD — post a photo to the wall
+   UPLOAD - post a photo to the wall
    ============================================================ */
 const uploadModal = document.getElementById('upload-modal');
 const uploadFile = document.getElementById('upload-file');
@@ -2862,7 +2862,7 @@ document.getElementById('album-share').addEventListener('click', () => {
 });
 
 /* ============================================================
-   DISPLAY SETTINGS — render quality (maxDpr) + fps cap
+   DISPLAY SETTINGS - render quality (maxDpr) + fps cap
    ============================================================ */
 const settingsBtn = document.getElementById('settings-btn');
 const settingsPanel = document.getElementById('settings-panel');

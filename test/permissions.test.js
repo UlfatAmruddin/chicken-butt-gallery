@@ -111,7 +111,7 @@ test('accountLocked flags an account after too many failed logins (across IPs) a
   assert.equal(accountLocked(acct), false);
 });
 
-test('authThrottled (pre-credential gate) does NOT lock an account from failures alone — only wrong passwords do, in the handler', () => {
+test('authThrottled (pre-credential gate) does NOT lock an account from failures alone - only wrong passwords do, in the handler', () => {
   // The fix for the lockout-DoS: failures don't pre-block, so a correct password
   // (which never reaches recordAuthFailure) is never throttled by the account dimension.
   const acct = 'owner_' + Date.now().toString(36);

@@ -27,7 +27,7 @@ const PROFILE_BODY_LIMIT = Math.ceil(2 * 8 * 1024 * 1024 * 4 / 3) + 128 * 1024;
 const DUMMY_SALT = crypto.randomBytes(16).toString('hex');
 const DUMMY_HASH = Buffer.from(hashPass('*', DUMMY_SALT), 'hex');
 
-// Profile for the account owner — adds email fields the public profile must never expose.
+// Profile for the account owner - adds email fields the public profile must never expose.
 function selfProfile(u) {
   return { ...publicProfile(u), email: u.email || '', emailVerified: !!u.emailVerified };
 }
@@ -50,7 +50,7 @@ async function handleApi(req, res, pathname, params) {
   try {
     const seg = pathname.split('/').filter(Boolean);
 
-    // Coarse per-IP throttle on every mutating request — a public backstop
+    // Coarse per-IP throttle on every mutating request - a public backstop
     // against write floods that complements the auth- and upload-specific limits.
     if ((req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') && tooManyWrites(req)) {
       return send(res, 429, { error: 'Too many requests. Slow down.' });
@@ -68,7 +68,7 @@ async function handleApi(req, res, pathname, params) {
       if (authThrottled(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       if (users[username]) return send(res, 409, { error: 'That username is taken.' });
       if (emailInUse(email, username)) return send(res, 409, { error: 'That email is already in use.' });
-      // Defer account creation until the emailed code is verified — no persisted
+      // Defer account creation until the emailed code is verified - no persisted
       // unverified accounts to bloat storage or squat usernames.
       const salt = crypto.randomBytes(16).toString('hex');
       const challenge = createChallenge(username, 'register', email);
@@ -94,7 +94,7 @@ async function handleApi(req, res, pathname, params) {
       const ok = !!u && tryHash.length === goodHash.length && crypto.timingSafeEqual(tryHash, goodHash);
       if (!ok) {
         // Wrong credentials: record the failure. Block only once the account crosses
-        // the distributed-failure threshold — and only here (wrong password), so the
+        // the distributed-failure threshold - and only here (wrong password), so the
         // real owner with the correct password is never locked out.
         recordAuthFailure(username);
         if (accountLocked(username)) return send(res, 429, { error: 'Too many failed attempts. Try again later.' });
@@ -113,7 +113,7 @@ async function handleApi(req, res, pathname, params) {
         if (r.error) return send(res, 429, { error: r.error });
         return send(res, 200, { step: 'verify', challenge, email: maskEmail(u.email) });
       }
-      // Recognised device → skip 2FA.
+      // Recognised device -> skip 2FA.
       if (b.deviceToken && deviceTrusted(b.deviceToken, username)) {
         return send(res, 200, grantSession(u, false));
       }
@@ -513,7 +513,7 @@ async function handleApi(req, res, pathname, params) {
       const c = findCommunity(seg[2]);
       if (!c) return send(res, 404, { error: 'No such community.' });
       if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can manage scopes.' });
-      // seg[] comes from the already-decoded pathname — do NOT decode again, or
+      // seg[] comes from the already-decoded pathname - do NOT decode again, or
       // scope names containing '%' break and spaces (%20) mis-match/mis-target.
       const name = clean(seg[4], 20).toUpperCase();
       const scopes = communityScopes(c);
@@ -930,7 +930,7 @@ startMaintenance();
 // Graceful shutdown: stop accepting connections, let in-flight requests drain,
 // then exit. Persisted writes are synchronous so on-disk state is already safe.
 function shutdown(signal) {
-  console.log(`${signal} received — shutting down`);
+  console.log(`${signal} received - shutting down`);
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
