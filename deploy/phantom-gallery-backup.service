@@ -1,0 +1,13 @@
+# Oneshot backup job, triggered by phantom-gallery-backup.timer.
+# Install both files to /etc/systemd/system/ then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now phantom-gallery-backup.timer
+[Unit]
+Description=Chicken Butt Gallery data backup
+
+[Service]
+Type=oneshot
+User=gallery
+Group=gallery
+WorkingDirectory=/opt/phantom-gallery
+EnvironmentFile=/opt/phantom-gallery/.env
+ExecStart=/usr/bin/node scripts/backup.js

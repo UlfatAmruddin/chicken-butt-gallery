@@ -1,0 +1,27 @@
+# systemd unit for the gallery. Install to /etc/systemd/system/phantom-gallery.service
+# then:  sudo systemctl daemon-reload && sudo systemctl enable --now phantom-gallery
+[Unit]
+Description=Chicken Butt Gallery
+After=network.target
+
+[Service]
+Type=simple
+User=gallery
+Group=gallery
+WorkingDirectory=/opt/phantom-gallery
+EnvironmentFile=/opt/phantom-gallery/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+
+# --- sandboxing: the process may only write to its data + assets dirs ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/phantom-gallery/data /opt/phantom-gallery/assets /opt/phantom-gallery/backups
+
+[Install]
+WantedBy=multi-user.target

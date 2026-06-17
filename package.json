@@ -1,0 +1,15 @@
+{
+  "name": "chicken-butt-gallery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Invite-only photo gallery rendered as the interior of a 3D sphere. Zero-dependency Node.js backend.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test",
+    "backup": "node --env-file-if-exists=.env scripts/backup.js"
+  }
+}

@@ -1,0 +1,22 @@
+# Runtime state — never commit user data, uploads, secrets, or backups
+/data/
+/assets/uploads/
+/assets/avatars/
+/assets/community/
+/backups/
+
+# Secrets / local env — never commit; keep only the example
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+*.log
+
+# Tooling / OS
+.claude/
+.playwright-mcp/
+.DS_Store
+Thumbs.db

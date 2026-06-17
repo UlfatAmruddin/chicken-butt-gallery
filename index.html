@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Chicken Butt Gallery</title>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css"/>
+<script src="/js/vendor/gsap.min.js"></script>
+</head>
+<body class="entry-mode">
+
+<canvas id="scene"></canvas>
+<div class="vignette"></div>
+
+<!-- ======= PUBLIC WELCOME ======= -->
+<section id="landing" class="entry-screen">
+  <div class="entry-top mono">
+    <span>CHICKEN BUTT GALLERY</span>
+    <button id="landing-login" type="button">LOG IN</button>
+  </div>
+  <div class="hero-copy">
+    <p class="mono hero-kicker">PRIVATE MEMORY SPHERES</p>
+    <h1>Make a room for the photos only your friends should see.</h1>
+    <p class="hero-sub">Create an invite-only gallery, send the link, and let everyone build the sphere together.</p>
+    <div class="hero-actions">
+      <button id="hero-create" class="pill-white" type="button">Create A Community</button>
+      <button id="hero-invite" class="ghost-pill" type="button">Enter Invite</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======= PRIVATE COMMUNITY PICKER ======= -->
+<section id="community-hub" class="entry-screen" hidden>
+  <div class="entry-top mono">
+    <button id="hub-back-home" type="button">HOME</button>
+    <button id="hub-logout" type="button">LOG OUT</button>
+  </div>
+  <div class="hub-inner">
+    <p class="mono hero-kicker">YOUR PRIVATE ROOMS</p>
+    <h1>Choose a community.</h1>
+    <p class="hero-sub">Only communities you belong to appear here.</p>
+    <div class="hub-actions">
+      <button id="hub-create" class="pill-white" type="button">Create Community</button>
+      <button id="hub-enter-invite" class="ghost-pill" type="button">Enter Invite</button>
+    </div>
+    <div id="community-list" class="community-list"></div>
+    <p id="community-empty" class="mono dim" hidden>NO COMMUNITIES YET. CREATE ONE OR ENTER AN INVITE.</p>
+  </div>
+</section>
+
+<!-- ======= INVITE JOIN VIEW ======= -->
+<section id="invite-view" class="entry-screen" hidden>
+  <div class="entry-top mono">
+    <button id="invite-home" type="button">HOME</button>
+    <button id="invite-login" type="button">LOG IN</button>
+  </div>
+  <div class="invite-card">
+    <p class="mono hero-kicker">PRIVATE INVITE</p>
+    <h1 id="invite-title">Join a community</h1>
+    <p id="invite-desc" class="hero-sub"></p>
+    <p id="invite-meta" class="mono dim"></p>
+    <p id="invite-err" class="mono err"></p>
+    <button id="invite-join" class="pill-white" type="button">Join Community</button>
+  </div>
+</section>
+
+<div id="empty-wall" class="mono" hidden aria-live="polite">
+  <p>THE WALL IS EMPTY</p>
+  <button id="empty-upload" type="button">POST THE FIRST PHOTO</button>
+</div>
+
+<!-- ======= HUD ======= -->
+<a class="logo" href="#" aria-label="Home">
+  <svg width="46" height="46" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <g fill="#fff">
+      <!-- tail feathers -->
+      <path d="M17 31 C7 27 3 19 5 10 C9 16 13 18 16 19 C12 13 12 7 16 3 C19 9 22 13 26 15 Z"/>
+      <!-- body -->
+      <path d="M14 36 C14 25 23 18 33 18 L44 18 C49 18 53 22 53 27 C53 40 43 51 31 51 C21 51 14 45 14 36 Z"/>
+      <!-- neck bridge -->
+      <path d="M37 11 L53 20 L40 29 Z"/>
+      <!-- head -->
+      <circle cx="46" cy="14" r="8"/>
+      <!-- comb -->
+      <path d="M40 8 C38 3 42 0 44 3 C45 -1 49 -1 49 3 C52 1 54 4 52 8 Z"/>
+      <!-- beak -->
+      <path d="M54 11 L62 14.5 L54 18 Z"/>
+      <!-- wattle -->
+      <path d="M50 20 C53 24 51 28 49 28 C47 28 46 23 48 20 Z"/>
+      <!-- legs -->
+      <path d="M27 51 v8 M27 59 l-4 4 M27 59 l3 4 M37 50 v8 M37 58 l-4 4 M37 58 l3 4" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    </g>
+    <circle cx="48.5" cy="12.5" r="1.7" fill="#0a0a0a"/>
+  </svg>
+</a>
+
+<div id="sound-wrap">
+  <button id="sound" class="mono">&#9646;&#9646;&#9646; SOUND</button>
+  <input id="volume" type="range" min="0" max="100" value="60" aria-label="Volume">
+</div>
+
+<button id="me-chip" class="mono" hidden>@user</button>
+<button id="community-chip" class="mono" hidden>COMMUNITY</button>
+<button id="invite-tools-btn" class="mono" hidden>Invite</button>
+<button class="lets-talk" id="lets-talk">Let's Talk</button>
+
+<button id="settings-btn" class="circle-btn" aria-label="Settings" title="Display settings">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/>
+    <path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 4.2l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.3"/>
+  </svg>
+</button>
+
+<div id="settings-panel" hidden>
+  <div class="sp-head mono">DISPLAY SETTINGS</div>
+  <div class="sp-row">
+    <div class="sp-label mono"><span>RENDER QUALITY</span><span id="set-dpr-val">1×</span></div>
+    <input id="set-dpr" type="range" min="1" max="3" step="0.5" value="1" aria-label="Render quality (max device pixel ratio)">
+    <div class="sp-ticks mono"><span>1×</span><span>1.5×</span><span>2×</span><span>2.5×</span><span>3×</span></div>
+  </div>
+  <div class="sp-row">
+    <div class="sp-label mono"><span>MAX FPS</span><span id="set-fps-val">60</span></div>
+    <input id="set-fps" type="range" min="0" max="144" step="1" value="60" aria-label="Maximum frames per second">
+    <div class="sp-ticks mono"><span>0</span><span>144</span></div>
+  </div>
+</div>
+
+<div class="view-toggles">
+  <button class="circle-btn active" id="view-grid" aria-label="Grid view">
+    <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/></svg>
+  </button>
+  <button class="circle-btn" id="view-list" aria-label="List view">
+    <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor"/></svg>
+  </button>
+  <button class="circle-btn" id="upload-btn" aria-label="Post a photo" title="Post a photo">
+    <svg width="16" height="16" viewBox="0 0 16 16"><rect x="7" y="1" width="2" height="14" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/></svg>
+  </button>
+</div>
+
+<nav class="pill-nav">
+  <span class="pill-bg"></span>
+  <button class="active" data-view="gallery">Gallery</button>
+  <button data-view="albums">Albums</button>
+  <button data-view="people">People</button>
+</nav>
+
+<button id="filter-btn">Filter</button>
+
+<div id="filter-panel" hidden>
+  <div class="fp-head mono">FILTER BY TAG <button id="fp-clear" class="mono">CLEAR</button></div>
+  <div class="fp-tags" id="fp-tags"></div>
+</div>
+
+<!-- ======= DETAIL PAGE ======= -->
+<section id="detail" aria-hidden="true">
+  <div class="detail-inner">
+    <div class="detail-top">
+      <button id="back-btn" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
+      <button class="mono" id="d-client-top"></button>
+    </div>
+    <h1 id="d-title"><span id="d-title-inner"></span></h1>
+    <div class="d-meta mono">
+      <div><span class="lbl">CLIENT</span><span id="d-client"></span></div>
+      <div><span class="lbl">YEAR</span><span id="d-year"></span></div>
+      <div><span class="lbl">SCOPE</span><span id="d-tags"></span></div>
+    </div>
+    <div id="d-owner" class="mono" hidden>
+      <button id="d-edit-btn" class="mono">EDIT PHOTO</button>
+      <button id="d-add-album-btn" class="mono">ADD TO ALBUM</button>
+      <button id="d-pin-btn" class="mono" hidden>PIN PHOTO</button>
+      <button id="d-delete-btn" class="mono danger">DELETE PHOTO</button>
+    </div>
+    <form id="d-edit-form" hidden>
+      <div class="pe-row">
+        <label class="mono">TITLE<input id="de-title" maxlength="40"></label>
+        <label class="mono">CLIENT<input id="de-client" maxlength="30"></label>
+        <label class="mono">YEAR<input id="de-year" type="number" min="1900" max="2100"></label>
+      </div>
+      <label class="mono">PHOTO BIO<textarea id="de-caption" rows="3" maxlength="300"></textarea></label>
+      <div class="field">
+        <span class="mono">SCOPES — PICK UP TO 8</span>
+        <div id="de-scopes" class="scope-chips"></div>
+      </div>
+      <p id="de-err" class="mono err"></p>
+      <div class="pe-row">
+        <button type="submit" class="pill-white">Save Changes</button>
+        <button type="button" id="de-cancel" class="mono">CANCEL</button>
+      </div>
+    </form>
+    <figure class="d-hero"><img id="d-img" alt=""></figure>
+    <div class="d-cols">
+      <p id="d-p1"></p>
+      <p id="d-p2"></p>
+    </div>
+
+    <section id="d-social" class="d-social" hidden>
+      <div class="d-react">
+        <button id="d-like" class="like-btn"><span class="heart">&hearts;</span> <span id="d-like-count">0</span></button>
+        <span class="mono dim" id="d-comment-count">0 COMMENTS</span>
+        <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
+      </div>
+      <div id="d-comments" class="d-comments"></div>
+      <form id="d-comment-form" class="d-comment-form">
+        <input id="d-comment-input" maxlength="500" placeholder="Add a comment&hellip;" autocomplete="off">
+        <button type="submit" class="pill-white">Post</button>
+      </form>
+    </section>
+
+    <div class="d-footer mono">CHICKEN BUTT GALLERY&reg; &mdash; ALL RIGHTS RESERVED</div>
+  </div>
+</section>
+
+<!-- ======= PEOPLE / PROFILES ======= -->
+<section id="people" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="people-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
+      <span class="mono dim">COMMUNITY</span>
+    </div>
+
+    <div id="people-list">
+      <h1 class="people-title">PEOPLE</h1>
+      <input id="people-search" class="search mono" placeholder="SEARCH USERNAMES&hellip;" autocomplete="off">
+      <div id="people-grid"></div>
+      <p id="people-empty" class="mono dim" hidden>NO PEOPLE FOUND.</p>
+    </div>
+
+    <div id="profile-view" hidden>
+      <button id="profile-back" class="mono">&larr;&nbsp; ALL PEOPLE</button>
+      <div class="profile-cover" id="profile-cover" hidden></div>
+      <div class="profile-head">
+        <div class="avatar" id="profile-avatar">?</div>
+        <div class="profile-id">
+          <h2 id="profile-name"></h2>
+          <p class="mono" id="profile-username"></p>
+          <p class="mono dim" id="profile-meta"></p>
+        </div>
+        <div class="profile-actions">
+          <button id="profile-share" class="mono">SHARE</button>
+          <button id="profile-edit-btn" class="mono" hidden>EDIT PROFILE</button>
+          <button id="logout-btn" class="mono" hidden>LOG OUT</button>
+        </div>
+      </div>
+      <p id="profile-bio"></p>
+      <p id="profile-links" class="mono"></p>
+
+      <form id="profile-edit" hidden>
+        <div class="pe-images">
+          <div class="pe-img-field">
+            <span class="mono">PROFILE PHOTO</span>
+            <div class="pe-pic-row">
+              <span class="avatar" id="pe-avatar-preview">?</span>
+              <label class="mono pe-pick" for="pe-avatar-file">CHOOSE</label>
+              <button type="button" class="mono pe-clear" id="pe-avatar-clear">REMOVE</button>
+              <input id="pe-avatar-file" type="file" accept="image/*" hidden>
+            </div>
+          </div>
+          <div class="pe-img-field">
+            <span class="mono">COVER PHOTO</span>
+            <div class="pe-pic-row">
+              <span class="pe-cover-preview" id="pe-cover-preview"></span>
+              <label class="mono pe-pick" for="pe-cover-file">CHOOSE</label>
+              <button type="button" class="mono pe-clear" id="pe-cover-clear">REMOVE</button>
+              <input id="pe-cover-file" type="file" accept="image/*" hidden>
+            </div>
+          </div>
+        </div>
+        <label class="mono">DISPLAY NAME<input id="pe-name" maxlength="40"></label>
+        <label class="mono">BIO<textarea id="pe-bio" maxlength="280" rows="3"></textarea></label>
+        <div class="pe-row">
+          <label class="mono">LOCATION<input id="pe-location" maxlength="60"></label>
+          <label class="mono">WEBSITE<input id="pe-website" maxlength="120" placeholder="https://&hellip;"></label>
+        </div>
+        <p id="pe-err" class="mono err"></p>
+        <div class="pe-row">
+          <button type="submit" class="pill-white">Save Profile</button>
+          <button type="button" id="pe-cancel" class="mono">CANCEL</button>
+        </div>
+      </form>
+
+      <form id="pw-form" hidden>
+        <h3 class="mono dim photos-label">CHANGE PASSWORD</h3>
+        <label class="mono">CURRENT PASSWORD<input id="pw-current" type="password" autocomplete="current-password"></label>
+        <label class="mono">NEW PASSWORD<input id="pw-new" type="password" autocomplete="new-password" placeholder="At least 8 characters"></label>
+        <label class="mono">CONFIRM NEW PASSWORD<input id="pw-confirm" type="password" autocomplete="new-password" placeholder="Re-enter new password"></label>
+        <p id="pw-err" class="mono err"></p>
+        <div class="pe-row">
+          <button type="submit" class="pill-white">Update Password</button>
+        </div>
+      </form>
+
+      <div class="section-head">
+        <h3 class="mono dim photos-label">ALBUMS</h3>
+        <button id="profile-new-album" class="mono" hidden>+ NEW ALBUM</button>
+      </div>
+      <div id="profile-albums" class="album-grid"></div>
+      <p id="profile-no-albums" class="mono dim" hidden>NO ALBUMS YET.</p>
+
+      <h3 class="mono dim photos-label">PHOTOS</h3>
+      <div id="profile-photos"></div>
+      <p id="profile-no-photos" class="mono dim" hidden>NO PHOTOS POSTED YET.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======= ALBUMS ======= -->
+<section id="albums" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="albums-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
+      <span class="mono dim">COLLECTIONS</span>
+    </div>
+
+    <div id="albums-list">
+      <div class="section-head">
+        <h1 class="people-title">ALBUMS</h1>
+        <button id="albums-new" class="pill-white">+ New Album</button>
+      </div>
+      <div id="albums-grid" class="album-grid"></div>
+      <p id="albums-empty" class="mono dim" hidden>NO ALBUMS YET. CREATE ONE TO GROUP YOUR PHOTOS.</p>
+    </div>
+
+    <div id="album-page" hidden>
+      <button id="album-back" class="mono">&larr;&nbsp; ALL ALBUMS</button>
+      <div class="album-head">
+        <div class="album-id">
+          <h2 id="album-name"></h2>
+          <p class="mono dim" id="album-meta"></p>
+          <p id="album-desc"></p>
+        </div>
+        <div class="album-actions">
+          <button id="album-share" class="mono">SHARE</button>
+          <span id="album-actions" hidden>
+            <button id="album-edit-btn" class="mono">EDIT</button>
+            <button id="album-add-photos-btn" class="mono">ADD PHOTOS</button>
+            <button id="album-delete-btn" class="mono danger">DELETE</button>
+          </span>
+        </div>
+      </div>
+      <form id="album-edit-form" hidden>
+        <label class="mono">NAME<input id="ae-name" maxlength="60"></label>
+        <label class="mono">DESCRIPTION<textarea id="ae-desc" rows="2" maxlength="300"></textarea></label>
+        <p id="ae-err" class="mono err"></p>
+        <div class="pe-row">
+          <button type="submit" class="pill-white">Save Album</button>
+          <button type="button" id="ae-cancel" class="mono">CANCEL</button>
+        </div>
+      </form>
+      <div id="album-photos" class="album-photos"></div>
+      <p id="album-no-photos" class="mono dim" hidden>NO PHOTOS IN THIS ALBUM YET.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======= FLAT GRID / LIST VIEW ======= -->
+<section id="flat-view" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="flat-close" class="mono">&larr;&nbsp; BACK TO SPHERE</button>
+      <div class="flat-toggle">
+        <button id="flat-grid" class="circle-btn active" aria-label="Grid">
+          <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button id="flat-list" class="circle-btn" aria-label="List">
+          <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </div>
+    <h1 class="people-title">GALLERY</h1>
+    <div id="flat-grid-wrap" class="flat-grid"></div>
+    <p id="flat-empty" class="mono dim" hidden>NO PHOTOS YET.</p>
+  </div>
+</section>
+
+<!-- ======= COMMUNITY ROOM ======= -->
+<section id="community-room" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="room-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
+      <div class="room-top-actions">
+        <button id="room-switch" class="mono">SWITCH</button>
+        <button id="room-admin-open" class="mono" hidden>ADMIN</button>
+      </div>
+    </div>
+    <div class="room-hero" id="room-cover">
+      <div class="room-accent" id="room-accent"></div>
+      <p class="mono dim" id="room-role"></p>
+      <h1 id="room-title"></h1>
+      <p id="room-desc"></p>
+      <p id="room-welcome"></p>
+    </div>
+    <div class="room-grid">
+      <section class="room-panel">
+        <div class="section-head">
+          <h2 class="mono dim">PROMPT</h2>
+          <button id="room-prompt-upload" class="mono">POST TO PROMPT</button>
+        </div>
+        <p id="room-prompt-text" class="room-big">No active prompt yet.</p>
+      </section>
+      <section class="room-panel">
+        <h2 class="mono dim">PINNED MEMORIES</h2>
+        <div id="room-pinned" class="mini-photo-grid"></div>
+        <p id="room-pinned-empty" class="mono dim">NO PINNED PHOTOS YET.</p>
+      </section>
+    </div>
+    <section class="room-panel">
+      <h2 class="mono dim">RECENT MOMENTS</h2>
+      <div id="room-feed" class="activity-feed"></div>
+      <p id="room-feed-empty" class="mono dim">NO ACTIVITY YET.</p>
+    </section>
+  </div>
+</section>
+
+<!-- ======= COMMUNITY ADMIN ======= -->
+<section id="community-admin" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="admin-close" class="mono">&larr;&nbsp; BACK TO ROOM</button>
+      <span class="mono dim">OWNER / ADMIN</span>
+    </div>
+    <h1 class="people-title" id="admin-title">ADMIN</h1>
+    <div class="admin-grid">
+      <section class="admin-panel">
+        <h2 class="mono dim">COMMUNITY IDENTITY</h2>
+        <form id="community-settings-form">
+          <label class="mono">NAME<input id="cs-name" maxlength="60"></label>
+          <label class="mono">DESCRIPTION<textarea id="cs-desc" rows="2" maxlength="240"></textarea></label>
+          <label class="mono">WELCOME NOTE<textarea id="cs-welcome" rows="3" maxlength="300"></textarea></label>
+          <div class="pe-row">
+            <label class="mono">ACCENT<input id="cs-accent" type="color" value="#ffffff"></label>
+            <label class="mono pe-pick" for="cs-cover">CHOOSE COVER</label>
+            <input id="cs-cover" type="file" accept="image/*" hidden>
+          </div>
+          <p id="cs-err" class="mono err"></p>
+          <button class="pill-white" type="submit">Save Community</button>
+        </form>
+      </section>
+      <section class="admin-panel">
+        <h2 class="mono dim">MEMORY PROMPTS</h2>
+        <form id="prompt-form" class="inline-form">
+          <input id="prompt-text" maxlength="140" placeholder="e.g. Post the funniest photo from this week">
+          <button class="pill-white" type="submit">Create</button>
+        </form>
+        <p id="prompt-err" class="mono err"></p>
+        <div id="prompt-list" class="admin-list"></div>
+      </section>
+      <section class="admin-panel">
+        <h2 class="mono dim">SCOPES (PEOPLE &amp; GROUPS)</h2>
+        <form id="scope-form" class="inline-form">
+          <input id="scope-name" maxlength="20" placeholder="e.g. FAMILY, ROAD TRIP, MOM">
+          <button class="pill-white" type="submit">Add</button>
+        </form>
+        <p id="scope-err" class="mono err"></p>
+        <div id="scope-list" class="admin-list"></div>
+      </section>
+      <section class="admin-panel">
+        <h2 class="mono dim">MEMBERS</h2>
+        <div id="admin-members" class="admin-list"></div>
+      </section>
+      <section class="admin-panel">
+        <h2 class="mono dim">BANNED USERS</h2>
+        <div id="admin-bans" class="admin-list"></div>
+        <p id="admin-bans-empty" class="mono dim">NO BANNED USERS.</p>
+      </section>
+      <section class="admin-panel">
+        <h2 class="mono dim">INVITE LINKS</h2>
+        <div id="admin-invites" class="admin-list"></div>
+        <p id="admin-invites-empty" class="mono dim">NO ACTIVE INVITES.</p>
+        <button id="admin-invite-create" class="pill-white" type="button">Create Invite Link</button>
+      </section>
+      <section class="admin-panel">
+        <h2 class="mono dim">AUDIT LOG</h2>
+        <div id="admin-audit" class="admin-list audit-list"></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<!-- ======= CREATE ALBUM MODAL ======= -->
+<div id="album-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">NEW ALBUM <button id="album-modal-close" aria-label="Close">&#10005;</button></div>
+    <label class="mono">NAME<input id="am-name" maxlength="60" placeholder="e.g. DECA PROVINCIALS 2026"></label>
+    <label class="mono">DESCRIPTION<textarea id="am-desc" rows="2" maxlength="300" placeholder="Optional"></textarea></label>
+    <p id="am-err" class="mono err"></p>
+    <button class="pill-white" id="am-create">Create Album</button>
+  </div>
+</div>
+
+<!-- ======= CREATE COMMUNITY MODAL ======= -->
+<div id="community-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">NEW COMMUNITY <button id="community-modal-close" aria-label="Close">&#10005;</button></div>
+    <label class="mono">NAME<input id="cm-name" maxlength="60" placeholder="king bob"></label>
+    <label class="mono">DESCRIPTION<textarea id="cm-desc" rows="2" maxlength="240" placeholder="Optional"></textarea></label>
+    <p id="cm-err" class="mono err"></p>
+    <button class="pill-white" id="cm-create" type="button">Create Community</button>
+  </div>
+</div>
+
+<!-- ======= ENTER INVITE MODAL ======= -->
+<div id="enter-invite-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">ENTER INVITE <button id="enter-invite-close" aria-label="Close">&#10005;</button></div>
+    <label class="mono">INVITE CODE OR LINK<input id="enter-invite-code" maxlength="240" placeholder="Paste invite link or code"></label>
+    <p id="enter-invite-err" class="mono err"></p>
+    <button class="pill-white" id="enter-invite-go" type="button">Open Invite</button>
+  </div>
+</div>
+
+<!-- ======= INVITE MANAGEMENT MODAL ======= -->
+<div id="invite-tools-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">COMMUNITY INVITES <button id="invite-tools-close" aria-label="Close">&#10005;</button></div>
+    <p id="invite-tools-community" class="mono dim"></p>
+    <div id="invite-list" class="pick-album-list"></div>
+    <p id="invite-list-empty" class="mono dim" hidden>NO ACTIVE INVITES YET.</p>
+    <p id="invite-tools-err" class="mono err"></p>
+    <button class="pill-white" id="invite-create" type="button">Create Invite Link</button>
+  </div>
+</div>
+
+<!-- ======= JOIN ONBOARDING ======= -->
+<div id="onboarding-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">WELCOME IN <button id="onboarding-close" aria-label="Close">&#10005;</button></div>
+    <h2 id="onboarding-title">You joined the community.</h2>
+    <p class="modal-copy">Set up your profile and add a first photo so your friends know you made it in.</p>
+    <div class="modal-actions-stack">
+      <button id="onboarding-upload" class="pill-white" type="button">Post First Photo</button>
+      <button id="onboarding-profile" class="ghost-pill" type="button">Edit Profile</button>
+      <button id="onboarding-skip" class="mono" type="button">SKIP FOR NOW</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= ADD-TO-ALBUM MODAL ======= -->
+<div id="pick-album-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">ADD TO ALBUM <button id="pick-album-close" aria-label="Close">&#10005;</button></div>
+    <div id="pick-album-list" class="pick-album-list"></div>
+    <p id="pick-album-empty" class="mono dim" hidden>YOU HAVE NO ALBUMS YET.</p>
+    <button class="pill-white" id="pick-album-new">+ Create a New Album</button>
+  </div>
+</div>
+
+<!-- ======= ADD-PHOTOS-TO-ALBUM MODAL ======= -->
+<div id="add-photos-modal" hidden>
+  <div class="modal-box wide">
+    <div class="modal-head mono">ADD PHOTOS <button id="add-photos-close" aria-label="Close">&#10005;</button></div>
+    <p class="mono dim" style="margin-bottom:12px">TAP PHOTOS TO ADD OR REMOVE FROM THIS ALBUM.</p>
+    <div id="add-photos-grid" class="add-photos-grid"></div>
+    <p id="add-photos-empty" class="mono dim" hidden>YOU HAVE NO PHOTOS TO ADD.</p>
+    <button class="pill-white" id="add-photos-done">Done</button>
+  </div>
+</div>
+
+<!-- ======= UPLOAD MODAL ======= -->
+<div id="upload-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head mono">POST A PHOTO <button id="upload-close" aria-label="Close">&#10005;</button></div>
+    <label id="drop-zone" class="mono" for="upload-file">CLICK TO CHOOSE A PHOTO
+      <input id="upload-file" type="file" accept="image/*" multiple hidden>
+    </label>
+    <img id="upload-preview" alt="" hidden>
+    <div id="upload-batch" class="upload-batch"></div>
+    <label class="mono">TITLE<input id="upload-title" maxlength="40" placeholder="UNTITLED"></label>
+    <div class="pe-row">
+      <label class="mono">CLIENT<input id="upload-client" maxlength="30" placeholder="YOU / A BRAND"></label>
+      <label class="mono">YEAR<input id="upload-year" type="number" min="1900" max="2100"></label>
+      <label class="mono">CROP
+        <select id="upload-layout">
+          <option value="full">FULL</option>
+          <option value="portrait">PORTRAIT</option>
+          <option value="landscape">LANDSCAPE</option>
+        </select>
+      </label>
+    </div>
+    <div class="field">
+      <span class="mono">SCOPES — PICK UP TO 8</span>
+      <div id="upload-scopes" class="scope-chips"></div>
+    </div>
+    <label class="mono">PROMPT<select id="upload-prompt"><option value="">NO PROMPT</option></select></label>
+    <label class="mono">PHOTO BIO<textarea id="upload-caption" rows="2" maxlength="300" placeholder="Say something about it&hellip;"></textarea></label>
+    <p id="upload-err" class="mono err"></p>
+    <button class="pill-white" id="upload-submit">Post It</button>
+  </div>
+</div>
+
+<!-- ======= AUTH GATE ======= -->
+<section id="auth" hidden>
+  <div class="auth-box">
+    <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="#fff">
+        <path d="M17 31 C7 27 3 19 5 10 C9 16 13 18 16 19 C12 13 12 7 16 3 C19 9 22 13 26 15 Z"/>
+        <path d="M14 36 C14 25 23 18 33 18 L44 18 C49 18 53 22 53 27 C53 40 43 51 31 51 C21 51 14 45 14 36 Z"/>
+        <path d="M37 11 L53 20 L40 29 Z"/>
+        <circle cx="46" cy="14" r="8"/>
+        <path d="M40 8 C38 3 42 0 44 3 C45 -1 49 -1 49 3 C52 1 54 4 52 8 Z"/>
+        <path d="M54 11 L62 14.5 L54 18 Z"/>
+        <path d="M50 20 C53 24 51 28 49 28 C47 28 46 23 48 20 Z"/>
+        <path d="M27 51 v8 M27 59 l-4 4 M27 59 l3 4 M37 50 v8 M37 58 l-4 4 M37 58 l3 4" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      </g>
+      <circle cx="48.5" cy="12.5" r="1.7" fill="#0a0a0a"/>
+    </svg>
+    <h1 class="auth-title">CHICKEN BUTT GALLERY</h1>
+    <p class="auth-sub mono">A WALL FOR EVERYONE'S PHOTOS.<br>LOG IN TO STEP INSIDE.</p>
+    <div class="auth-tabs mono" id="auth-tabs">
+      <button id="tab-login" class="active" type="button">LOG IN</button>
+      <button id="tab-register" type="button">CREATE ACCOUNT</button>
+    </div>
+    <form id="auth-form">
+      <label class="mono">USERNAME<input id="auth-user" autocomplete="username" maxlength="20" spellcheck="false" required></label>
+      <label class="mono" id="auth-email-row" hidden>EMAIL<input id="auth-email" type="email" autocomplete="email" maxlength="254"></label>
+      <label class="mono" id="auth-name-row" hidden>DISPLAY NAME<input id="auth-name" maxlength="40" placeholder="Optional"></label>
+      <label class="mono">PASSWORD<input id="auth-pass" type="password" autocomplete="current-password" required></label>
+      <p id="auth-err" class="mono err"></p>
+      <button class="pill-white" id="auth-submit" type="submit">Log In</button>
+    </form>
+
+    <form id="auth-email-form" hidden>
+      <p class="mono dim">Add an email to secure your account &mdash; we'll send a code to confirm it.</p>
+      <label class="mono">EMAIL<input id="auth-email2" type="email" autocomplete="email" maxlength="254"></label>
+      <p id="auth-email-err" class="mono err"></p>
+      <button class="pill-white" id="auth-email-submit" type="submit">Send Code</button>
+      <button type="button" id="auth-email-back" class="mono">CANCEL</button>
+    </form>
+
+    <form id="auth-code-form" hidden>
+      <p class="mono dim" id="auth-code-msg">Enter the 6-digit code we emailed you.</p>
+      <label class="mono">6-DIGIT CODE<input id="auth-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" spellcheck="false"></label>
+      <label class="mono auth-remember"><input id="auth-remember" type="checkbox"> Remember this device for 30 days</label>
+      <p id="auth-code-err" class="mono err"></p>
+      <button class="pill-white" id="auth-code-submit" type="submit">Verify</button>
+      <button type="button" id="auth-code-resend" class="mono">RESEND CODE</button>
+      <button type="button" id="auth-code-back" class="mono">START OVER</button>
+    </form>
+  </div>
+</section>
+
+<div id="toast" class="mono" hidden></div>
+
+<div id="loader"><div class="mono" id="loader-text">LOADING&nbsp;&nbsp;0%</div></div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
