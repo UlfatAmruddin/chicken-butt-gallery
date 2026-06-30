@@ -1,6 +1,6 @@
 /* Renders a gallery card (header labels + cover artwork + footer tags) onto a
    canvas and returns it as a Three.js texture. Pure given (p, img, maxAniso). */
-import * as THREE from './vendor/three.module.js';
+import * as THREE from 'three';
 import { LOW_POWER } from './config.js';
 import { coverDraw } from './util.js';
 
@@ -13,7 +13,7 @@ export function makeCardTexture(p, img, maxAniso) {
   x.fillRect(0, 0, S, S);
   const pad = 18;
 
-  // header - client (left), project title (right)
+  // header — client (left), project title (right)
   x.fillStyle = '#d9d9d9';
   x.font = p.logo === 'mono' ? '700 16px "Space Mono"' : '600 19px Inter';
   x.fillText(p.client, pad, 36);
@@ -36,7 +36,7 @@ export function makeCardTexture(p, img, maxAniso) {
   }
   if (img) coverDraw(x, img, r);
 
-  // footer - category, boxed tags, year
+  // footer — category, boxed tags, year
   const fy = S - 22;
   x.font = '400 12px "Space Mono"';
   x.fillStyle = '#9a9a9a';

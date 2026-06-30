@@ -1,14 +1,10 @@
 const http = require('http');
 const crypto = require('crypto');
 
-const config = require('./lib/config');
 const { users, sessions, posts, albums, communities, invites, auditEvents, saveJSON } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
 const {
-  send, readBody, authUser, createSession, hashPass,
-  authThrottled, accountLocked, recordAuthFailure, clearAuthFailures, tooManyWrites, tooManyUploads, startMaintenance,
-  validEmail, emailInUse, createChallenge, getChallenge, consumeChallenge, issueCode, checkCode,
-  trustDevice, deviceTrusted, revokeUserDevices,
+  send, readBody, authUser, createSession, tooManyAuthAttempts, hashPass,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
@@ -18,171 +14,46 @@ const {
   saveDataUrlImage, safeUnlinkAsset, addAudit, memberList, publicPrompt, activityFeed,
 } = require('./lib/helpers');
 
-// Body cap for image routes: a base64 data URL is ~4/3 the decoded size; profile
-// can carry both an avatar and a cover, so allow two images plus JSON envelope.
-const IMG_BODY_LIMIT = Math.ceil(config.MAX_IMAGE_BYTES * 4 / 3) + 64 * 1024;
-const PROFILE_BODY_LIMIT = Math.ceil(2 * 8 * 1024 * 1024 * 4 / 3) + 128 * 1024;
-// Constant-time dummy credentials so logins for unknown users cost the same as
-// for real ones (no username-enumeration timing oracle).
-const DUMMY_SALT = crypto.randomBytes(16).toString('hex');
-const DUMMY_HASH = Buffer.from(hashPass('*', DUMMY_SALT), 'hex');
-
-// Profile for the account owner - adds email fields the public profile must never expose.
-function selfProfile(u) {
-  return { ...publicProfile(u), email: u.email || '', emailVerified: !!u.emailVerified };
-}
-// Mask an email for display in a code-step prompt ("ji***@gmail.com") without fully revealing it.
-function maskEmail(email) {
-  const [name, domain] = String(email || '').split('@');
-  if (!domain) return '';
-  const head = name.length <= 2 ? name[0] || '' : name.slice(0, 2);
-  return `${head}${'*'.repeat(Math.max(1, name.length - head.length))}@${domain}`;
-}
-// Finish auth: issue a session, optionally a trusted-device token (skips future 2FA).
-function grantSession(u, rememberDevice) {
-  const out = { token: createSession(u.username), profile: selfProfile(u) };
-  if (rememberDevice) out.deviceToken = trustDevice(u.username);
-  return out;
-}
-
 /* ---------------- API ---------------- */
 async function handleApi(req, res, pathname, params) {
   try {
     const seg = pathname.split('/').filter(Boolean);
 
-    // Coarse per-IP throttle on every mutating request - a public backstop
-    // against write floods that complements the auth- and upload-specific limits.
-    if ((req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') && tooManyWrites(req)) {
-      return send(res, 429, { error: 'Too many requests. Slow down.' });
-    }
-
     if (req.method === 'POST' && pathname === '/api/register') {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const username = clean(b.username, 20).toLowerCase();
       const password = String(b.password || '');
-      const email = validEmail(b.email);
-      // Validate format BEFORE the throttle so malformed usernames can't mint rate-limit keys.
+      if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(res, 400, { error: 'Username must be 3-20 chars: letters, numbers, underscores.' });
-      if (!email) return send(res, 400, { error: 'Enter a valid email address.' });
-      if (password.length < config.MIN_PASSWORD_LEN) return send(res, 400, { error: `Password must be at least ${config.MIN_PASSWORD_LEN} characters.` });
-      if (authThrottled(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
+      if (password.length < 4) return send(res, 400, { error: 'Password must be at least 4 characters.' });
       if (users[username]) return send(res, 409, { error: 'That username is taken.' });
-      if (emailInUse(email, username)) return send(res, 409, { error: 'That email is already in use.' });
-      // Defer account creation until the emailed code is verified - no persisted
-      // unverified accounts to bloat storage or squat usernames.
       const salt = crypto.randomBytes(16).toString('hex');
-      const challenge = createChallenge(username, 'register', email);
-      const pending = getChallenge(challenge);
-      pending.displayName = clean(b.displayName, 40) || username;
-      pending.salt = salt;
-      pending.hash = hashPass(password, salt);
-      const r = await issueCode(challenge, email, 'verify');
-      if (r.error) return send(res, 429, { error: r.error });
-      return send(res, 200, { step: 'verify', challenge, email });
+      users[username] = {
+        username,
+        displayName: clean(b.displayName, 40) || username,
+        salt,
+        hash: hashPass(password, salt),
+        bio: '', location: '', website: '',
+        joined: Date.now(),
+      };
+      saveJSON('users.json', users);
+      const token = createSession(username);
+      return send(res, 200, { token, profile: publicProfile(users[username]) });
     }
 
     if (req.method === 'POST' && pathname === '/api/login') {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const username = clean(b.username, 20).toLowerCase();
-      if (authThrottled(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
+      if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       const u = users[username];
-      // Always run scrypt (against a dummy hash for unknown users) so timing
-      // does not reveal whether the account exists.
-      const salt = u ? u.salt : DUMMY_SALT;
-      const goodHash = u ? Buffer.from(u.hash, 'hex') : DUMMY_HASH;
-      const tryHash = Buffer.from(hashPass(String(b.password || ''), salt), 'hex');
-      const ok = !!u && tryHash.length === goodHash.length && crypto.timingSafeEqual(tryHash, goodHash);
-      if (!ok) {
-        // Wrong credentials: record the failure. Block only once the account crosses
-        // the distributed-failure threshold - and only here (wrong password), so the
-        // real owner with the correct password is never locked out.
-        recordAuthFailure(username);
-        if (accountLocked(username)) return send(res, 429, { error: 'Too many failed attempts. Try again later.' });
+      if (!u) return send(res, 401, { error: 'Wrong username or password.' });
+      const tryHash = Buffer.from(hashPass(String(b.password || ''), u.salt), 'hex');
+      const goodHash = Buffer.from(u.hash, 'hex');
+      if (tryHash.length !== goodHash.length || !crypto.timingSafeEqual(tryHash, goodHash)) {
         return send(res, 401, { error: 'Wrong username or password.' });
       }
-      clearAuthFailures(username);
-      // Existing accounts predating email: must add + verify an email first.
-      if (!u.email) {
-        const challenge = createChallenge(username, 'email');
-        return send(res, 200, { step: 'email', challenge });
-      }
-      // Email on file but never verified: re-send a verification code.
-      if (!u.emailVerified) {
-        const challenge = createChallenge(username, 'verify', u.email);
-        const r = await issueCode(challenge, u.email, 'verify');
-        if (r.error) return send(res, 429, { error: r.error });
-        return send(res, 200, { step: 'verify', challenge, email: maskEmail(u.email) });
-      }
-      // Recognised device -> skip 2FA.
-      if (b.deviceToken && deviceTrusted(b.deviceToken, username)) {
-        return send(res, 200, grantSession(u, false));
-      }
-      // Otherwise require a second factor by email.
-      const challenge = createChallenge(username, '2fa', u.email);
-      const r = await issueCode(challenge, u.email, '2fa');
-      if (r.error) return send(res, 429, { error: r.error });
-      return send(res, 200, { step: '2fa', challenge, email: maskEmail(u.email) });
-    }
-
-    // Existing-account email-add step: attach an email, then send a verify code.
-    if (req.method === 'POST' && pathname === '/api/auth/email') {
-      const b = JSON.parse(await readBody(req, 64 * 1024));
-      const c = getChallenge(b.challenge);
-      if (!c || c.purpose !== 'email') return send(res, 400, { error: 'This request expired. Start again.' });
-      const u = users[c.username];
-      if (!u) return send(res, 400, { error: 'This request expired. Start again.' });
-      const email = validEmail(b.email);
-      if (!email) return send(res, 400, { error: 'Enter a valid email address.' });
-      if (emailInUse(email, u.username)) return send(res, 409, { error: 'That email is already in use.' });
-      u.email = email; u.emailVerified = false;
-      saveJSON('users.json', users);
-      c.purpose = 'verify'; c.email = email;
-      const r = await issueCode(b.challenge, email, 'verify');
-      if (r.error) return send(res, 429, { error: r.error });
-      return send(res, 200, { step: 'verify', challenge: b.challenge, email });
-    }
-
-    // Verify a code: completes email verification ('verify') or login 2FA ('2fa'),
-    // then issues a session (and a trusted-device token if requested).
-    if (req.method === 'POST' && pathname === '/api/auth/verify') {
-      const b = JSON.parse(await readBody(req, 64 * 1024));
-      const c = getChallenge(b.challenge);
-      if (!c || !['register', 'verify', '2fa'].includes(c.purpose)) return send(res, 400, { error: 'This code expired. Start again.' });
-      if (!checkCode(c, clean(b.code, 12))) {
-        recordAuthFailure(c.username);  // feed sustained code-guessing into the account backstop
-        return send(res, 401, { error: 'Wrong or expired code.' });
-      }
-      consumeChallenge(b.challenge);
-      // Pending registration: create the account only now that the email is proven.
-      if (c.purpose === 'register') {
-        if (users[c.username]) return send(res, 409, { error: 'That username is taken.' });
-        if (emailInUse(c.email, c.username)) return send(res, 409, { error: 'That email is already in use.' });
-        users[c.username] = {
-          username: c.username, displayName: c.displayName,
-          email: c.email, emailVerified: true,
-          salt: c.salt, hash: c.hash,
-          bio: '', location: '', website: '', joined: Date.now(),
-        };
-        saveJSON('users.json', users);
-        return send(res, 200, grantSession(users[c.username], b.rememberDevice === true));
-      }
-      const u = users[c.username];
-      if (!u) return send(res, 400, { error: 'This request expired. Start again.' });
-      if (c.purpose === 'verify') {
-        if (emailInUse(c.email, u.username)) return send(res, 409, { error: 'That email is already in use.' });
-        u.email = c.email; u.emailVerified = true;
-        saveJSON('users.json', users);
-      }
-      return send(res, 200, grantSession(u, b.rememberDevice === true));
-    }
-
-    if (req.method === 'POST' && pathname === '/api/auth/resend') {
-      const b = JSON.parse(await readBody(req, 64 * 1024));
-      const c = getChallenge(b.challenge);
-      if (!c || !['register', 'verify', '2fa'].includes(c.purpose)) return send(res, 400, { error: 'This request expired. Start again.' });
-      const r = await issueCode(b.challenge, c.email, c.purpose);
-      if (r.error) return send(res, 429, { error: r.error });
-      return send(res, 200, { ok: true });
+      const token = createSession(username);
+      return send(res, 200, { token, profile: publicProfile(u) });
     }
 
     if (req.method === 'POST' && pathname === '/api/logout') {
@@ -194,13 +65,13 @@ async function handleApi(req, res, pathname, params) {
     if (req.method === 'GET' && pathname === '/api/me') {
       const auth = requireAuth(req, res);
       if (!auth) return;
-      return send(res, 200, selfProfile(auth.user));
+      return send(res, 200, publicProfile(auth.user));
     }
 
     if (req.method === 'PUT' && pathname === '/api/profile') {
       const auth = requireAuth(req, res);
       if (!auth) return;
-      const b = JSON.parse(await readBody(req, PROFILE_BODY_LIMIT));
+      const b = JSON.parse(await readBody(req, 12 * 1024 * 1024));
       const u = auth.user;
       if (b.displayName !== undefined) u.displayName = clean(b.displayName, 40) || u.username;
       if (b.bio !== undefined) u.bio = clean(b.bio, 280);
@@ -222,44 +93,6 @@ async function handleApi(req, res, pathname, params) {
       return send(res, 200, publicProfile(u));
     }
 
-    if (req.method === 'PUT' && pathname === '/api/password') {
-      const auth = requireAuth(req, res);
-      if (!auth) return;
-      const b = JSON.parse(await readBody(req, 64 * 1024));
-      const u = auth.user;
-      // verify the current password in constant time
-      const cur = Buffer.from(hashPass(String(b.currentPassword || ''), u.salt), 'hex');
-      const good = Buffer.from(u.hash, 'hex');
-      const ok = cur.length === good.length && crypto.timingSafeEqual(cur, good);
-      if (!ok) {
-        // Brute-force protection on the re-auth gate (DoS-safe: only wrong attempts
-        // are counted, so the real owner with the correct password is never blocked).
-        recordAuthFailure(u.username);
-        if (accountLocked(u.username)) return send(res, 429, { error: 'Too many attempts. Try again later.' });
-        return send(res, 403, { error: 'Current password is incorrect.' });
-      }
-      clearAuthFailures(u.username);
-      const next = String(b.newPassword || '');
-      if (next.length < config.MIN_PASSWORD_LEN) return send(res, 400, { error: `Password must be at least ${config.MIN_PASSWORD_LEN} characters.` });
-      const salt = crypto.randomBytes(16).toString('hex');
-      u.salt = salt;
-      u.hash = hashPass(next, salt);
-      saveJSON('users.json', users);
-      // Revoke every other session for this user (a password change should log
-      // out other devices); keep the current token so the caller stays signed in.
-      let revoked = false;
-      for (const t of Object.keys(sessions)) {
-        if (t === auth.token) continue;
-        const e = sessions[t];
-        const name = typeof e === 'string' ? e : e && e.username;
-        if (name === u.username) { delete sessions[t]; revoked = true; }
-      }
-      if (revoked) saveJSON('sessions.json', sessions);
-      // Untrust remembered devices too, so a stolen device token can't skip 2FA after a reset.
-      revokeUserDevices(u.username);
-      return send(res, 200, { ok: true });
-    }
-
     /* ---------------- communities + invites ---------------- */
     if (req.method === 'GET' && pathname === '/api/communities') {
       const auth = requireAuth(req, res);
@@ -273,10 +106,6 @@ async function handleApi(req, res, pathname, params) {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const name = clean(b.name, 60);
       if (!name) return send(res, 400, { error: 'Name your community first.' });
-      const owned = communities.filter(c => c.owner === auth.user.username).length;
-      if (!isAdminUsername(auth.user.username) && owned >= config.MAX_COMMUNITIES_PER_USER) {
-        return send(res, 429, { error: 'You have reached the community limit.' });
-      }
       const id = uniqueCommunityId(name);
       const community = {
         id,
@@ -313,7 +142,7 @@ async function handleApi(req, res, pathname, params) {
       const c = findCommunity(seg[2]);
       if (!c) return send(res, 404, { error: 'No such community.' });
       if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can edit community settings.' });
-      const b = JSON.parse(await readBody(req, IMG_BODY_LIMIT));
+      const b = JSON.parse(await readBody(req, 12 * 1024 * 1024));
       if (b.name !== undefined && canOwnCommunity(c, auth.user.username)) {
         const name = clean(b.name, 60);
         if (name) c.name = name;
@@ -479,61 +308,6 @@ async function handleApi(req, res, pathname, params) {
       return send(res, 200, { ok: true });
     }
 
-    if (req.method === 'GET' && seg[1] === 'communities' && seg[2] && seg[3] === 'scopes') {
-      const auth = requireAuth(req, res);
-      if (!auth) return;
-      const c = findCommunity(seg[2]);
-      if (!c) return send(res, 404, { error: 'No such community.' });
-      if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
-      return send(res, 200, communityScopes(c));
-    }
-
-    if (req.method === 'POST' && seg[1] === 'communities' && seg[2] && seg[3] === 'scopes') {
-      const auth = requireAuth(req, res);
-      if (!auth) return;
-      const c = findCommunity(seg[2]);
-      if (!c) return send(res, 404, { error: 'No such community.' });
-      if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can manage scopes.' });
-      const b = JSON.parse(await readBody(req, 64 * 1024));
-      const name = clean(b.name, 20).toUpperCase();
-      if (!name) return send(res, 400, { error: 'Name the scope first.' });
-      const scopes = communityScopes(c);
-      if (!scopes.includes(name)) {
-        scopes.push(name);
-        scopes.sort();
-        saveJSON('communities.json', communities);
-        addAudit(c.id, auth.user.username, 'scope.created', name);
-      }
-      return send(res, 200, scopes);
-    }
-
-    if (req.method === 'DELETE' && seg[1] === 'communities' && seg[2] && seg[3] === 'scopes' && seg[4]) {
-      const auth = requireAuth(req, res);
-      if (!auth) return;
-      const c = findCommunity(seg[2]);
-      if (!c) return send(res, 404, { error: 'No such community.' });
-      if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can manage scopes.' });
-      // seg[] comes from the already-decoded pathname - do NOT decode again, or
-      // scope names containing '%' break and spaces (%20) mis-match/mis-target.
-      const name = clean(seg[4], 20).toUpperCase();
-      const scopes = communityScopes(c);
-      const before = scopes.length;
-      c.scopes = scopes.filter(s => s !== name);
-      if (before === c.scopes.length) return send(res, 404, { error: 'No such scope.' });
-      // also strip the scope from this community's photo tags
-      let postsChanged = false;
-      posts.forEach(p => {
-        if (p.communityId === c.id && Array.isArray(p.tags) && p.tags.includes(name)) {
-          p.tags = p.tags.filter(t => t !== name);
-          postsChanged = true;
-        }
-      });
-      saveJSON('communities.json', communities);
-      if (postsChanged) saveJSON('posts.json', posts);
-      addAudit(c.id, auth.user.username, 'scope.deleted', name);
-      return send(res, 200, c.scopes);
-    }
-
     if ((req.method === 'POST' || req.method === 'DELETE') && seg[1] === 'communities' && seg[2] && seg[3] === 'pins' && seg[4]) {
       const auth = requireAuth(req, res);
       if (!auth) return;
@@ -648,25 +422,13 @@ async function handleApi(req, res, pathname, params) {
     if (req.method === 'GET' && pathname === '/api/photos') {
       const ctx = requireCommunity(req, res, params);
       if (!ctx) return;
-      // Opt-in cursor pagination: with no params this returns the full set
-      // (the sphere loads everything at current scale); ?before=<ts>&limit=<n>
-      // is available for a paginated frontend once a community grows large.
-      let list = scopedPosts(ctx.community.id).sort((a, b) => b.created - a.created);
-      const before = parseInt(params.get('before'), 10);
-      if (Number.isFinite(before)) list = list.filter(p => p.created < before);
-      const limit = parseInt(params.get('limit'), 10);
-      if (Number.isFinite(limit) && limit > 0) list = list.slice(0, Math.min(limit, 500));
-      return send(res, 200, list);
+      return send(res, 200, scopedPosts(ctx.community.id).sort((a, b) => b.created - a.created));
     }
 
     if (req.method === 'POST' && pathname === '/api/photos') {
       const ctx = requireCommunity(req, res, params);
       if (!ctx) return;
-      if (tooManyUploads(ctx.auth.user.username)) return send(res, 429, { error: 'Upload limit reached. Try again later.' });
-      if (!isAdminUsername(ctx.auth.user.username) && userPhotoCount(ctx.auth.user.username) >= config.MAX_PHOTOS_PER_USER) {
-        return send(res, 429, { error: 'You have reached the photo limit.' });
-      }
-      const b = JSON.parse(await readBody(req, IMG_BODY_LIMIT));
+      const b = JSON.parse(await readBody(req));
       const saved = saveDataUrlImage(b.image, 'assets/uploads', ctx.auth.user.username);
       if (saved.error) return send(res, 400, { error: saved.error });
       const yr = parseInt(b.year, 10);
@@ -721,7 +483,6 @@ async function handleApi(req, res, pathname, params) {
       const text = clean(b.text, 500);
       if (!text) return send(res, 400, { error: 'Write something first.' });
       if (!Array.isArray(post.comments)) post.comments = [];
-      if (post.comments.length >= config.MAX_COMMENTS_PER_POST) return send(res, 429, { error: 'This photo has reached the comment limit.' });
       const comment = { id: crypto.randomBytes(6).toString('hex'), username: auth.user.username, text, created: Date.now() };
       post.comments.push(comment);
       saveJSON('posts.json', posts);
@@ -884,15 +645,12 @@ async function handleApi(req, res, pathname, params) {
     return send(res, 404, { error: 'Unknown API route.' });
   } catch (e) {
     const code = e.message === 'payload too large' ? 413 : e instanceof SyntaxError ? 400 : 500;
-    // Log unexpected failures so production 500s are diagnosable; client-caused
-    // 4xx (bad JSON, oversized body) stay quiet to avoid log noise.
-    if (code === 500) console.error(`[api] ${req.method} ${pathname} ->`, e);
     return send(res, code, { error: code === 500 ? 'Server error.' : e.message });
   }
 }
 
 /* ---------------- server ---------------- */
-const server = http.createServer((req, res) => {
+http.createServer((req, res) => {
   let u;
   try {
     u = new URL(req.url, 'http://localhost');
@@ -911,28 +669,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Unauthenticated liveness probe for the reverse proxy / uptime monitor.
-  if (pathname === '/healthz') {
-    res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }));
-    res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ ok: true }));
-    return;
-  }
-
   if (pathname.startsWith('/api/')) { handleApi(req, res, pathname, u.searchParams); return; }
   serveStatic(req, res, pathname);
-});
-
-server.listen(config.PORT, config.HOST, () => console.log(`serving at http://${config.HOST}:${config.PORT}`));
-
-// Periodic sweep of expired sessions and stale rate-limit buckets.
-startMaintenance();
-
-// Graceful shutdown: stop accepting connections, let in-flight requests drain,
-// then exit. Persisted writes are synchronous so on-disk state is already safe.
-function shutdown(signal) {
-  console.log(`${signal} received - shutting down`);
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 5000).unref();
-}
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+}).listen(8173, () => console.log('serving at http://localhost:8173'));

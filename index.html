@@ -4,12 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Chicken Butt Gallery</title>
-<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css"/>
-<script src="/js/vendor/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
 </head>
 <body class="entry-mode">
 
@@ -182,7 +184,7 @@
       </div>
       <label class="mono">PHOTO BIO<textarea id="de-caption" rows="3" maxlength="300"></textarea></label>
       <div class="field">
-        <span class="mono">SCOPES - PICK UP TO 8</span>
+        <span class="mono">SCOPES - PICK UP TO 3</span>
         <div id="de-scopes" class="scope-chips"></div>
       </div>
       <p id="de-err" class="mono err"></p>
@@ -279,17 +281,6 @@
         <div class="pe-row">
           <button type="submit" class="pill-white">Save Profile</button>
           <button type="button" id="pe-cancel" class="mono">CANCEL</button>
-        </div>
-      </form>
-
-      <form id="pw-form" hidden>
-        <h3 class="mono dim photos-label">CHANGE PASSWORD</h3>
-        <label class="mono">CURRENT PASSWORD<input id="pw-current" type="password" autocomplete="current-password"></label>
-        <label class="mono">NEW PASSWORD<input id="pw-new" type="password" autocomplete="new-password" placeholder="At least 8 characters"></label>
-        <label class="mono">CONFIRM NEW PASSWORD<input id="pw-confirm" type="password" autocomplete="new-password" placeholder="Re-enter new password"></label>
-        <p id="pw-err" class="mono err"></p>
-        <div class="pe-row">
-          <button type="submit" class="pill-white">Update Password</button>
         </div>
       </form>
 
@@ -449,15 +440,6 @@
         <div id="prompt-list" class="admin-list"></div>
       </section>
       <section class="admin-panel">
-        <h2 class="mono dim">SCOPES (PEOPLE &amp; GROUPS)</h2>
-        <form id="scope-form" class="inline-form">
-          <input id="scope-name" maxlength="20" placeholder="e.g. FAMILY, ROAD TRIP, MOM">
-          <button class="pill-white" type="submit">Add</button>
-        </form>
-        <p id="scope-err" class="mono err"></p>
-        <div id="scope-list" class="admin-list"></div>
-      </section>
-      <section class="admin-panel">
         <h2 class="mono dim">MEMBERS</h2>
         <div id="admin-members" class="admin-list"></div>
       </section>
@@ -581,7 +563,7 @@
       </label>
     </div>
     <div class="field">
-      <span class="mono">SCOPES - PICK UP TO 8</span>
+      <span class="mono">SCOPES - PICK UP TO 3</span>
       <div id="upload-scopes" class="scope-chips"></div>
     </div>
     <label class="mono">PROMPT<select id="upload-prompt"><option value="">NO PROMPT</option></select></label>
@@ -609,35 +591,16 @@
     </svg>
     <h1 class="auth-title">CHICKEN BUTT GALLERY</h1>
     <p class="auth-sub mono">A WALL FOR EVERYONE'S PHOTOS.<br>LOG IN TO STEP INSIDE.</p>
-    <div class="auth-tabs mono" id="auth-tabs">
+    <div class="auth-tabs mono">
       <button id="tab-login" class="active" type="button">LOG IN</button>
       <button id="tab-register" type="button">CREATE ACCOUNT</button>
     </div>
     <form id="auth-form">
       <label class="mono">USERNAME<input id="auth-user" autocomplete="username" maxlength="20" spellcheck="false" required></label>
-      <label class="mono" id="auth-email-row" hidden>EMAIL<input id="auth-email" type="email" autocomplete="email" maxlength="254"></label>
       <label class="mono" id="auth-name-row" hidden>DISPLAY NAME<input id="auth-name" maxlength="40" placeholder="Optional"></label>
       <label class="mono">PASSWORD<input id="auth-pass" type="password" autocomplete="current-password" required></label>
       <p id="auth-err" class="mono err"></p>
       <button class="pill-white" id="auth-submit" type="submit">Log In</button>
-    </form>
-
-    <form id="auth-email-form" hidden>
-      <p class="mono dim">Add an email to secure your account - we'll send a code to confirm it.</p>
-      <label class="mono">EMAIL<input id="auth-email2" type="email" autocomplete="email" maxlength="254"></label>
-      <p id="auth-email-err" class="mono err"></p>
-      <button class="pill-white" id="auth-email-submit" type="submit">Send Code</button>
-      <button type="button" id="auth-email-back" class="mono">CANCEL</button>
-    </form>
-
-    <form id="auth-code-form" hidden>
-      <p class="mono dim" id="auth-code-msg">Enter the 6-digit code we emailed you.</p>
-      <label class="mono">6-DIGIT CODE<input id="auth-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" spellcheck="false"></label>
-      <label class="mono auth-remember"><input id="auth-remember" type="checkbox"> Remember this device for 30 days</label>
-      <p id="auth-code-err" class="mono err"></p>
-      <button class="pill-white" id="auth-code-submit" type="submit">Verify</button>
-      <button type="button" id="auth-code-resend" class="mono">RESEND CODE</button>
-      <button type="button" id="auth-code-back" class="mono">START OVER</button>
     </form>
   </div>
 </section>

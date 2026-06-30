@@ -1,4 +1,4 @@
-import * as THREE from './js/vendor/three.module.js';
+import * as THREE from 'three';
 import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw } from './js/util.js';
 import { LOW_POWER, IMAGE_LOAD_CONCURRENCY } from './js/config.js';
 import { makeCardTexture } from './js/textures.js';
@@ -155,7 +155,7 @@ function updateEmptyWall() {
   emptyWall.hidden = !me || !currentCommunity || pool.length > 0;
 }
 function isAdminProfile(profile = me) {
-  return !!profile && !!profile.isAdmin;   // server-authoritative (publicProfile.isAdmin)
+  return !!profile && (profile.isAdmin || String(profile.username || '').toLowerCase() === 'ulfatamruddin');
 }
 function isCommunityAdmin() {
   return !!currentCommunity && ['owner', 'admin'].includes(currentCommunity.role);
@@ -610,27 +610,19 @@ function closeProject() {
 }
 let pendingRebuild = false;
 
-/* ---- scope chips (shared by upload + edit forms) ----
-   Roster comes from the active community (admin-managed); union with the photo's
-   existing tags so legacy tags stay visible/editable even after roster edits. */
-const SCOPE_PICK_LIMIT = 8;
+/* ---- scope chips (shared by upload + edit forms) ---- */
+const SCOPES = ['WEBSITE', '3D', 'AI', 'CAMPAIGN', 'FILM', 'TOOL', 'SOCIAL', 'CONTENT', 'EVENT', 'GAME', 'AR', 'MOTION', 'OOH', 'ILLUSTRATION', 'PHYSICAL', 'PHOTO'];
 function buildScopeChips(container, selected = []) {
   container.innerHTML = '';
-  const roster = (currentCommunity && Array.isArray(currentCommunity.scopes)) ? currentCommunity.scopes : [];
-  const all = [...new Set([...roster, ...selected])];
-  const active = new Set(selected.filter(t => all.includes(t)));
-  if (!all.length) {
-    container.innerHTML = '<span class="mono dim">NO SCOPES YET - AN ADMIN CAN ADD THEM IN THE COMMUNITY ADMIN PANEL.</span>';
-    return () => [...active];
-  }
-  all.forEach(t => {
+  const active = new Set(selected.filter(t => SCOPES.includes(t)));
+  SCOPES.forEach(t => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'scope-chip' + (active.has(t) ? ' active' : '');
     b.textContent = t;
     b.addEventListener('click', () => {
       if (active.has(t)) { active.delete(t); b.classList.remove('active'); }
-      else if (active.size < SCOPE_PICK_LIMIT) { active.add(t); b.classList.add('active'); }
+      else if (active.size < 3) { active.add(t); b.classList.add('active'); }
     });
     container.appendChild(b);
   });
@@ -1125,24 +1117,12 @@ const aUser = document.getElementById('auth-user');
 const aPass = document.getElementById('auth-pass');
 const aName = document.getElementById('auth-name');
 const aNameRow = document.getElementById('auth-name-row');
-const aEmail = document.getElementById('auth-email');
-const aEmailRow = document.getElementById('auth-email-row');
 const authErr = document.getElementById('auth-err');
 const authSubmit = document.getElementById('auth-submit');
 const tabLogin = document.getElementById('tab-login');
 const tabRegister = document.getElementById('tab-register');
-const authTabs = document.getElementById('auth-tabs');
-const authEmailForm = document.getElementById('auth-email-form');
-const authCodeForm = document.getElementById('auth-code-form');
 const meChip = document.getElementById('me-chip');
 let authMode = 'login';
-let authChallenge = '';   // pending email/2FA challenge token
-
-const deviceToken = {
-  get() { return localStorage.getItem('pg_device') || ''; },
-  set(t) { if (t) localStorage.setItem('pg_device', t); },
-  clear() { localStorage.removeItem('pg_device'); },
-};
 let pendingInviteCode = '';
 let roomOpen = false;
 let adminOpen = false;
@@ -1159,47 +1139,12 @@ function overlayOpen() {
 
 function setAuthMode(mode) {
   authMode = mode;
-  showAuthStep('credentials');
   tabLogin.classList.toggle('active', mode === 'login');
   tabRegister.classList.toggle('active', mode === 'register');
   aNameRow.hidden = mode === 'login';
-  aEmailRow.hidden = mode === 'login';
   authSubmit.textContent = mode === 'login' ? 'Log In' : 'Create Account';
   aPass.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
   authErr.textContent = '';
-}
-/* Toggle the auth box between the credentials, add-email, and code-entry steps. */
-function showAuthStep(step) {
-  authForm.hidden = step !== 'credentials';
-  authTabs.hidden = step !== 'credentials';
-  authEmailForm.hidden = step !== 'email';
-  authCodeForm.hidden = step !== 'code';
-}
-/* Route a /api/login or /api/register response: either logged in, or a next step. */
-async function handleAuthResult(r) {
-  if (r.token) { await finishAuth(r); return; }
-  authChallenge = r.challenge || '';
-  if (r.step === 'email') {
-    document.getElementById('auth-email2').value = '';
-    document.getElementById('auth-email-err').textContent = '';
-    showAuthStep('email');
-  } else if (r.step === 'verify' || r.step === '2fa') {
-    document.getElementById('auth-code').value = '';
-    document.getElementById('auth-code-err').textContent = '';
-    document.getElementById('auth-remember').checked = false;
-    document.getElementById('auth-code-msg').textContent =
-      (r.step === 'verify' ? 'Verify your email - enter the 6-digit code we sent' : 'Enter the 6-digit code we emailed')
-      + (r.email ? ` to ${r.email}.` : '.');
-    showAuthStep('code');
-  }
-}
-async function finishAuth(r) {
-  api.setToken(r.token);
-  if (r.deviceToken) deviceToken.set(r.deviceToken);
-  me = r.profile;
-  authChallenge = '';
-  updateMeChip();
-  await afterAuthSuccess();
 }
 tabLogin.addEventListener('click', () => setAuthMode('login'));
 tabRegister.addEventListener('click', () => setAuthMode('register'));
@@ -1458,58 +1403,18 @@ authForm.addEventListener('submit', async (e) => {
   authSubmit.disabled = true;
   try {
     const body = { username: aUser.value.trim(), password: aPass.value };
-    if (authMode === 'register') { body.displayName = aName.value.trim(); body.email = aEmail.value.trim(); }
-    else body.deviceToken = deviceToken.get();
+    if (authMode === 'register') body.displayName = aName.value.trim();
     const r = await api.call('POST', authMode === 'login' ? '/api/login' : '/api/register', body);
-    await handleAuthResult(r);
+    api.setToken(r.token);
+    me = r.profile;
+    updateMeChip();
+    await afterAuthSuccess();
   } catch (err) {
     authErr.textContent = String(err.message || 'SOMETHING WENT WRONG').toUpperCase();
   } finally {
     authSubmit.disabled = false;
   }
 });
-
-// Step: existing account adds an email, then receives a verification code.
-authEmailForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const errEl = document.getElementById('auth-email-err');
-  errEl.textContent = '';
-  try {
-    const r = await api.call('POST', '/api/auth/email', { challenge: authChallenge, email: document.getElementById('auth-email2').value.trim() });
-    await handleAuthResult(r);
-  } catch (err) {
-    errEl.textContent = String(err.message || 'COULD NOT SEND CODE').toUpperCase();
-  }
-});
-document.getElementById('auth-email-back').addEventListener('click', () => setAuthMode(authMode));
-
-// Step: verify the emailed code (email verification or login 2FA).
-authCodeForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const errEl = document.getElementById('auth-code-err');
-  errEl.textContent = '';
-  try {
-    const r = await api.call('POST', '/api/auth/verify', {
-      challenge: authChallenge,
-      code: document.getElementById('auth-code').value.trim(),
-      rememberDevice: document.getElementById('auth-remember').checked,
-    });
-    await handleAuthResult(r);
-  } catch (err) {
-    errEl.textContent = String(err.message || 'WRONG OR EXPIRED CODE').toUpperCase();
-  }
-});
-document.getElementById('auth-code-resend').addEventListener('click', async () => {
-  const errEl = document.getElementById('auth-code-err');
-  errEl.textContent = '';
-  try {
-    await api.call('POST', '/api/auth/resend', { challenge: authChallenge });
-    toast('NEW CODE SENT');
-  } catch (err) {
-    errEl.textContent = String(err.message || 'COULD NOT RESEND').toUpperCase();
-  }
-});
-document.getElementById('auth-code-back').addEventListener('click', () => setAuthMode(authMode));
 
 function openCommunityModal() {
   if (!me) { showAuth('register', { type: 'create' }); return; }
@@ -1729,7 +1634,7 @@ async function renderAdminPanel() {
   document.getElementById('cs-welcome').value = currentCommunity.welcome || '';
   document.getElementById('cs-accent').value = /^#[0-9a-f]{6}$/i.test(currentCommunity.accent || '') ? currentCommunity.accent : '#ffffff';
   csCoverData = undefined;
-  await Promise.all([renderAdminMembers(), renderAdminBans(), renderAdminInvites(), renderAdminPrompts(), renderAdminScopes(), renderAdminAudit()]);
+  await Promise.all([renderAdminMembers(), renderAdminBans(), renderAdminInvites(), renderAdminPrompts(), renderAdminAudit()]);
 }
 
 async function renderAdminMembers() {
@@ -1861,32 +1766,6 @@ async function deletePrompt(id) {
   } catch (e) { toast(String(e.message || 'COULD NOT DELETE PROMPT').toUpperCase()); }
 }
 
-async function renderAdminScopes() {
-  const wrap = document.getElementById('scope-list');
-  if (!wrap) return;
-  wrap.innerHTML = '';
-  const scopes = Array.isArray(currentCommunity.scopes) ? currentCommunity.scopes : [];
-  if (!scopes.length) { wrap.innerHTML = '<p class="mono dim">NO SCOPES YET.</p>'; return; }
-  scopes.forEach(name => {
-    const row = document.createElement('div');
-    row.className = 'admin-row';
-    row.innerHTML =
-      `<span class="admin-main"><strong>${esc(name)}</strong></span>` +
-      `<span class="admin-actions"><button class="mono danger delete-scope">DELETE</button></span>`;
-    row.querySelector('.delete-scope').addEventListener('click', () => deleteScope(name));
-    wrap.appendChild(row);
-  });
-}
-
-async function deleteScope(name) {
-  if (!confirm(`Delete scope "${name}"? It will be removed from photos that use it.`)) return;
-  try {
-    await api.call('DELETE', `/api/communities/${encodeURIComponent(currentCommunity.id)}/scopes/${encodeURIComponent(name)}`);
-    toast('SCOPE DELETED');
-    await renderAdminPanel();
-  } catch (e) { toast(String(e.message || 'COULD NOT DELETE SCOPE').toUpperCase()); }
-}
-
 async function renderAdminAudit() {
   const wrap = document.getElementById('admin-audit');
   wrap.innerHTML = '';
@@ -1938,20 +1817,6 @@ document.getElementById('prompt-form').addEventListener('submit', async (e) => {
     await renderAdminPanel();
   } catch (err) {
     document.getElementById('prompt-err').textContent = String(err.message || 'COULD NOT CREATE').toUpperCase();
-  }
-});
-document.getElementById('scope-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = document.getElementById('scope-name').value.trim();
-  if (!name) { document.getElementById('scope-err').textContent = 'NAME THE SCOPE FIRST.'; return; }
-  try {
-    await api.call('POST', `/api/communities/${encodeURIComponent(currentCommunity.id)}/scopes`, { name });
-    document.getElementById('scope-name').value = '';
-    document.getElementById('scope-err').textContent = '';
-    toast('SCOPE ADDED');
-    await renderAdminPanel();
-  } catch (err) {
-    document.getElementById('scope-err').textContent = String(err.message || 'COULD NOT ADD').toUpperCase();
   }
 });
 document.getElementById('admin-invite-create').addEventListener('click', async () => {
@@ -2359,7 +2224,6 @@ async function showProfile(username, updateHash = true) {
   peopleListEl.hidden = true;
   profileView.hidden = false;
   profileEditForm.hidden = true;
-  document.getElementById('pw-form').hidden = true;
   peopleEl.scrollTop = 0;
 
   document.getElementById('profile-avatar').innerHTML = avatarInner(p);
@@ -2453,17 +2317,10 @@ profileEditBtn.addEventListener('click', () => {
   setEditCoverPreview(viewingProfile.cover ? '/' + viewingProfile.cover : '');
   profileEditForm.hidden = false;
   profileEditBtn.hidden = true;
-  // expose the change-password form alongside profile editing (own profile only)
-  document.getElementById('pw-current').value = '';
-  document.getElementById('pw-new').value = '';
-  document.getElementById('pw-confirm').value = '';
-  document.getElementById('pw-err').textContent = '';
-  document.getElementById('pw-form').hidden = false;
 });
 document.getElementById('pe-cancel').addEventListener('click', () => {
   profileEditForm.hidden = true;
   profileEditBtn.hidden = false;
-  document.getElementById('pw-form').hidden = true;
 });
 
 document.getElementById('pe-avatar-file').addEventListener('change', async (e) => {
@@ -2507,26 +2364,6 @@ profileEditForm.addEventListener('submit', async (e) => {
     showProfile(me.username);
   } catch (err) {
     document.getElementById('pe-err').textContent = String(err.message || 'COULD NOT SAVE').toUpperCase();
-  }
-});
-
-document.getElementById('pw-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const errEl = document.getElementById('pw-err');
-  errEl.textContent = '';
-  const currentPassword = document.getElementById('pw-current').value;
-  const newPassword = document.getElementById('pw-new').value;
-  const confirmPassword = document.getElementById('pw-confirm').value;
-  if (newPassword !== confirmPassword) { errEl.textContent = "NEW PASSWORDS DON'T MATCH."; return; }
-  try {
-    await api.call('PUT', '/api/password', { currentPassword, newPassword });
-    document.getElementById('pw-current').value = '';
-    document.getElementById('pw-new').value = '';
-    document.getElementById('pw-confirm').value = '';
-    document.getElementById('pw-form').hidden = true;
-    toast('PASSWORD UPDATED');
-  } catch (err) {
-    errEl.textContent = String(err.message || 'COULD NOT UPDATE').toUpperCase();
   }
 });
 
