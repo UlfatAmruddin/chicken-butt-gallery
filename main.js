@@ -503,6 +503,7 @@ function fillDetail(p) {
   dEls.year.textContent = p.year;
   dEls.tags.textContent = [p.cat, ...p.tags].join(' / ');
   dEls.img.src = p.heroSrc || p.src || '';
+  resetDetailZoom();
   detailProject = p;
   const canManage = canManageProject(p);
   document.getElementById('d-owner').hidden = !canManage;
@@ -572,6 +573,155 @@ function stepPhoto(dir) {
 document.getElementById('d-prev').addEventListener('click', () => stepPhoto(-1));
 document.getElementById('d-next').addEventListener('click', () => stepPhoto(1));
 
+/* ============================================================
+   DETAIL IMAGE ZOOM + PAN (desktop wheel/drag/dblclick + touch pinch)
+   ============================================================ */
+const dHero = document.querySelector('.d-hero');
+const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_DBL = 2.5;
+const detailZoom = { scale: 1, x: 0, y: 0 };
+
+/* clamp the translation so the image can never be dragged fully out of the
+   frame. at scale s the image is (s-1)x larger than the frame in each axis,
+   so translation is allowed within +/- half of that overflow. */
+function clampDetailZoom() {
+  const s = detailZoom.scale;
+  if (s <= 1) { detailZoom.x = 0; detailZoom.y = 0; return; }
+  const rect = dHero.getBoundingClientRect();
+  const maxX = rect.width * (s - 1) / 2;
+  const maxY = rect.height * (s - 1) / 2;
+  detailZoom.x = Math.max(-maxX, Math.min(maxX, detailZoom.x));
+  detailZoom.y = Math.max(-maxY, Math.min(maxY, detailZoom.y));
+}
+
+function applyDetailZoom() {
+  clampDetailZoom();
+  const { scale, x, y } = detailZoom;
+  // transform-origin is the image center (which sits at the frame center), so
+  // x/y is a pure pixel pan measured from that center.
+  dEls.img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  const zoomed = scale > 1.001;
+  dHero.classList.toggle('zoomed', zoomed);
+  if (!zoomed) dHero.classList.remove('grabbing');
+}
+
+/* reset to identity - called on every photo open / navigation / close so a
+   new photo never inherits a stuck zoom. */
+function resetDetailZoom() {
+  detailZoom.scale = 1; detailZoom.x = 0; detailZoom.y = 0;
+  dEls.img.style.transform = '';
+  dHero.classList.remove('zoomed', 'grabbing');
+}
+
+/* zoom toward a point (px,py measured from the frame's top-left corner) by
+   keeping that point visually fixed as the scale changes. */
+function zoomAtPoint(px, py, nextScale) {
+  const rect = dHero.getBoundingClientRect();
+  const prev = detailZoom.scale;
+  nextScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, nextScale));
+  if (nextScale === prev) return;
+  const cx = rect.width / 2, cy = rect.height / 2;
+  // point relative to frame center, in pre-transform image space
+  const ix = (px - cx - detailZoom.x) / prev;
+  const iy = (py - cy - detailZoom.y) / prev;
+  detailZoom.scale = nextScale;
+  detailZoom.x = px - cx - ix * nextScale;
+  detailZoom.y = py - cy - iy * nextScale;
+  applyDetailZoom();
+}
+
+dHero.addEventListener('wheel', (e) => {
+  if (detail.style.display !== 'block') return;
+  const rect = dHero.getBoundingClientRect();
+  // at rest (scale 1) an upward scroll starts a zoom; otherwise let the page
+  // scroll through normally so reading below the image still works.
+  if (detailZoom.scale <= 1 && e.deltaY >= 0) return;
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  zoomAtPoint(e.clientX - rect.left, e.clientY - rect.top, detailZoom.scale * factor);
+}, { passive: false });
+
+dHero.addEventListener('dblclick', (e) => {
+  if (detail.style.display !== 'block') return;
+  e.preventDefault();
+  const rect = dHero.getBoundingClientRect();
+  if (detailZoom.scale > 1.001) resetDetailZoom();
+  else zoomAtPoint(e.clientX - rect.left, e.clientY - rect.top, ZOOM_DBL);
+}, { passive: false });
+
+/* pointer-based drag-to-pan + two-finger pinch */
+const activePointers = new Map();
+let dragLast = null, pinchStart = null;
+
+dHero.addEventListener('pointerdown', (e) => {
+  if (detail.style.display !== 'block') return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size === 2) {
+    const pts = [...activePointers.values()];
+    pinchStart = {
+      dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+      scale: detailZoom.scale,
+    };
+    dragLast = null;
+    return;
+  }
+  if (detailZoom.scale > 1) {
+    dragLast = { x: e.clientX, y: e.clientY };
+    dHero.classList.add('grabbing');
+    dHero.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+});
+
+dHero.addEventListener('pointermove', (e) => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pinchStart && activePointers.size >= 2) {
+    const pts = [...activePointers.values()];
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    if (pinchStart.dist > 0) {
+      const rect = dHero.getBoundingClientRect();
+      const mx = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const my = (pts[0].y + pts[1].y) / 2 - rect.top;
+      zoomAtPoint(mx, my, pinchStart.scale * (dist / pinchStart.dist));
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (dragLast) {
+    detailZoom.x += e.clientX - dragLast.x;
+    detailZoom.y += e.clientY - dragLast.y;
+    dragLast = { x: e.clientX, y: e.clientY };
+    applyDetailZoom();
+    e.preventDefault();
+  }
+});
+
+function endPointer(e) {
+  const wasPinching = !!pinchStart;
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) pinchStart = null;
+  // pinch just dropped to one finger while still zoomed: hand off to a drag so
+  // panning continues seamlessly without a lift-and-retouch.
+  if (wasPinching && activePointers.size === 1 && detailZoom.scale > 1) {
+    const [p] = activePointers.values();
+    dragLast = { x: p.x, y: p.y };
+    dHero.classList.add('grabbing');
+  }
+  if (activePointers.size === 0) { dragLast = null; dHero.classList.remove('grabbing'); }
+  if (dHero.hasPointerCapture && dHero.hasPointerCapture(e.pointerId)) {
+    dHero.releasePointerCapture(e.pointerId);
+  }
+}
+dHero.addEventListener('pointerup', endPointer);
+dHero.addEventListener('pointercancel', endPointer);
+
+// keep the pan clamped correctly if the window is resized while zoomed
+window.addEventListener('resize', () => {
+  if (detail.style.display === 'block' && detailZoom.scale > 1) applyDetailZoom();
+});
+
 function openProject(card) {
   if (ui.locked) return;
   ui.locked = true;
@@ -613,6 +763,7 @@ function showDetail() {
 
 function closeProject() {
   if (detail.style.display !== 'block') return;
+  resetDetailZoom();
   cardsAnimating = true;
   markSceneDirty();
   if (detailProject && detailProject.postId) clearRouteIf(photoRoute(detailProject.postId));
@@ -763,6 +914,31 @@ function syncPostSocial(p) {
   const cp = communityPosts.find(x => x.id === p.postId);
   if (cp) { cp.likes = p.likes; cp.comments = p.comments; }
 }
+/* returns true when a username is a real member we can link to a profile */
+function isKnownMember(name) {
+  return !!(userMeta[name] || (me && me.username === name));
+}
+/* fill an element with comment text, turning @username tokens for real
+   members into clickable profile links. all text goes in as text nodes
+   (or esc'd token spans) so there is zero XSS surface. */
+function linkifyComment(el, text) {
+  el.textContent = '';
+  const re = /@([a-z0-9_]{3,20})/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    const name = m[1].toLowerCase();
+    if (!isKnownMember(name)) continue;   // leave unknown @tokens as plain text
+    if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const span = document.createElement('button');
+    span.type = 'button';
+    span.className = 'mention';
+    span.textContent = '@' + name;
+    span.addEventListener('click', () => { closeProject(); openPeople(name); });
+    el.appendChild(span);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+}
 function renderSocial(p) {
   if (!p || !p.community) { dSocial.hidden = true; return; }
   dSocial.hidden = false;
@@ -784,7 +960,7 @@ function renderSocial(p) {
       `<span class="mono dim c-time">@${esc(c.username)} · ${timeAgo(c.created)}</span>` +
       (canDel ? `<button class="c-del" title="Delete comment">✕</button>` : '') +
       `</div><div class="c-text"></div></div>`;
-    row.querySelector('.c-text').textContent = c.text;
+    linkifyComment(row.querySelector('.c-text'), c.text);
     row.querySelector('.c-name').addEventListener('click', () => { closeProject(); openPeople(c.username); });
     if (canDel) row.querySelector('.c-del').addEventListener('click', () => deleteComment(p, c.id));
     dCommentsEl.appendChild(row);
@@ -819,11 +995,93 @@ dCommentForm.addEventListener('submit', async (e) => {
     const c = await api.call('POST', `/api/photos/${p.postId}/comments`, { text });
     p.comments.push(c);
     dCommentInput.value = '';
+    hideMentionMenu();
     if (me && !userMeta[me.username]) userMeta[me.username] = me;
     syncPostSocial(p);
     renderSocial(p);
   } catch (e) { toast(String(e.message || 'COULD NOT POST').toUpperCase()); }
 });
+
+/* ---- @mention autocomplete (comment input) ---- */
+const mentionMenu = document.createElement('div');
+mentionMenu.className = 'mention-menu';
+mentionMenu.hidden = true;
+dCommentForm.appendChild(mentionMenu);
+let mentionMatches = [];
+let mentionActive = -1;
+let mentionStart = -1;   // index of the '@' being completed
+
+function mentionCandidates() {
+  // members from the already-fetched roster, plus me (may not be in userMeta yet)
+  const map = {};
+  Object.values(userMeta).forEach(u => { if (u && u.username) map[u.username] = u; });
+  if (me && me.username) map[me.username] = map[me.username] || me;
+  return Object.values(map);
+}
+function hideMentionMenu() {
+  if (mentionMenu.hidden) return;
+  mentionMenu.hidden = true;
+  mentionMenu.innerHTML = '';
+  mentionMatches = [];
+  mentionActive = -1;
+  mentionStart = -1;
+}
+function renderMentionMenu() {
+  mentionMenu.innerHTML = '';
+  mentionMatches.forEach((u, i) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'mention-item' + (i === mentionActive ? ' active' : '');
+    item.innerHTML =
+      `<span class="avatar sm">${avatarInner(u)}</span>` +
+      `<span class="mm-body"><span class="mm-name">${esc(u.displayName || u.username)}</span>` +
+      `<span class="mono dim mm-user">@${esc(u.username)}</span></span>`;
+    // mousedown (not click) so it fires before the input blurs
+    item.addEventListener('mousedown', (e) => { e.preventDefault(); pickMention(i); });
+    mentionMenu.appendChild(item);
+  });
+  mentionMenu.hidden = mentionMatches.length === 0;
+}
+function pickMention(i) {
+  const u = mentionMatches[i];
+  if (!u || mentionStart < 0) { hideMentionMenu(); return; }
+  const val = dCommentInput.value;
+  const caret = dCommentInput.selectionStart;
+  const before = val.slice(0, mentionStart);
+  const after = val.slice(caret);
+  const insert = '@' + u.username + ' ';
+  dCommentInput.value = before + insert + after;
+  const pos = before.length + insert.length;
+  dCommentInput.setSelectionRange(pos, pos);
+  hideMentionMenu();
+  dCommentInput.focus();
+}
+function updateMentionMenu() {
+  const val = dCommentInput.value;
+  const caret = dCommentInput.selectionStart;
+  // find a trailing "@partial" ending at the caret (partial may be empty)
+  const upto = val.slice(0, caret);
+  const m = /(^|[^a-z0-9_@])@([a-z0-9_]{0,20})$/i.exec(upto);
+  if (!m) { hideMentionMenu(); return; }
+  mentionStart = caret - m[2].length - 1;   // position of the '@'
+  const q = m[2].toLowerCase();
+  mentionMatches = mentionCandidates()
+    .filter(u => u.username.includes(q) || (u.displayName || '').toLowerCase().includes(q))
+    .sort((a, b) => a.username.localeCompare(b.username))
+    .slice(0, 6);
+  mentionActive = mentionMatches.length ? 0 : -1;
+  renderMentionMenu();
+}
+dCommentInput.addEventListener('input', updateMentionMenu);
+dCommentInput.addEventListener('keydown', (e) => {
+  if (mentionMenu.hidden) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); mentionActive = (mentionActive + 1) % mentionMatches.length; renderMentionMenu(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); mentionActive = (mentionActive - 1 + mentionMatches.length) % mentionMatches.length; renderMentionMenu(); }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mentionActive < 0 ? 0 : mentionActive); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideMentionMenu(); }
+});
+dCommentInput.addEventListener('blur', () => setTimeout(hideMentionMenu, 120));
+
 window.addEventListener('keydown', (e) => {
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       && detail.style.display === 'block') {
@@ -842,6 +1100,7 @@ window.addEventListener('keydown', (e) => {
     else if (!albumModal.hidden) closeAlbumModal();
     else if (!pickAlbumModal.hidden) closePickAlbum();
     else if (!addPhotosModal.hidden) { closeAddPhotos(); if (viewingAlbum) showAlbum(viewingAlbum.album.id); }
+    else if (detail.style.display === 'block' && detailZoom.scale > 1.001) { e.preventDefault(); resetDetailZoom(); return; }
     else if (detail.style.display === 'block') closeProject();
     else if (flatOpen) closeFlatView();
     else if (albumsOpen) {
@@ -1232,6 +1491,114 @@ function updateMeChip() {
 }
 meChip.addEventListener('click', () => { if (me) openPeople(me.username); });
 
+/* ---------------- notifications inbox ---------------- */
+const notifBtn = document.getElementById('notif-btn');
+const notifBadge = document.getElementById('notif-badge');
+const notifPanel = document.getElementById('notifications-panel');
+const notifListEl = document.getElementById('notif-list');
+const notifEmptyEl = document.getElementById('notif-empty');
+let notifications = [];
+let notifUnread = 0;
+let notifOpen = false;
+
+function updateNotifButtonBadge() {
+  notifBtn.hidden = !me;
+  if (!me) { closeNotifPanel(); return; }
+  if (notifUnread > 0) {
+    notifBadge.hidden = false;
+    notifBadge.textContent = notifUnread > 99 ? '99+' : String(notifUnread);
+  } else {
+    notifBadge.hidden = true;
+  }
+}
+
+async function loadNotifications() {
+  if (!me) { notifications = []; notifUnread = 0; updateNotifButtonBadge(); return; }
+  try {
+    const r = await api.call('GET', '/api/notifications');
+    notifications = Array.isArray(r.notifications) ? r.notifications : [];
+    notifUnread = Number.isFinite(r.unread) ? r.unread : notifications.filter(n => !n.read).length;
+  } catch {
+    notifications = [];
+    notifUnread = 0;
+  }
+  updateNotifButtonBadge();
+  if (notifOpen) renderNotifications();
+}
+
+function notifLabel(n) {
+  const title = n.title || 'your photo';
+  if (n.type === 'like') return `@${n.actor} liked ${title}`;
+  if (n.type === 'comment') return `@${n.actor} commented on ${title}`;
+  if (n.type === 'mention') return `@${n.actor} mentioned you on ${title}`;
+  return `@${n.actor} on ${title}`;
+}
+
+function renderNotifications() {
+  notifListEl.innerHTML = '';
+  notifications.forEach(n => {
+    const row = document.createElement('button');
+    row.className = 'notif-row' + (n.read ? '' : ' unread');
+    const preview = (n.type === 'comment' || n.type === 'mention') && n.text ? `"${esc(n.text)}" / ` : '';
+    row.innerHTML =
+      `<span class="notif-main"><strong>${esc(notifLabel(n))}</strong>` +
+      `<small class="mono dim">${preview}${timeAgo(n.created)}</small></span>` +
+      (n.read ? '' : `<span class="notif-unread-dot"></span>`);
+    row.addEventListener('click', () => openNotification(n));
+    notifListEl.appendChild(row);
+  });
+  notifEmptyEl.hidden = notifications.length > 0;
+}
+
+function openNotification(n) {
+  closeNotifPanel();
+  if (n.postId && n.communityId) {
+    setRoute(photoRoute(n.postId, n.communityId));
+  }
+  // fire-and-forget: mark this one read so the badge updates
+  if (!n.read) {
+    n.read = true;
+    notifUnread = Math.max(0, notifUnread - 1);
+    updateNotifButtonBadge();
+    api.call('POST', '/api/notifications/read', { ids: [n.id] }).catch(() => {});
+  }
+}
+
+async function markAllNotifsRead() {
+  if (!notifications.some(n => !n.read)) return;
+  notifications.forEach(n => { n.read = true; });
+  notifUnread = 0;
+  updateNotifButtonBadge();
+  renderNotifications();
+  try { await api.call('POST', '/api/notifications/read', {}); } catch {}
+}
+
+function openNotifPanel() {
+  notifOpen = true;
+  notifBtn.classList.add('active');
+  notifPanel.hidden = false;
+  renderNotifications();
+  gsap.fromTo(notifPanel, { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.3, ease: 'power3.out' });
+}
+function closeNotifPanel() {
+  if (!notifOpen) { notifPanel.hidden = true; return; }
+  notifOpen = false;
+  notifBtn.classList.remove('active');
+  gsap.to(notifPanel, { opacity: 0, y: -10, duration: 0.2, ease: 'power2.in', onComplete: () => { notifPanel.hidden = true; } });
+}
+function toggleNotifPanel() {
+  if (notifOpen) { closeNotifPanel(); return; }
+  openNotifPanel();
+  loadNotifications();
+}
+notifBtn.addEventListener('click', toggleNotifPanel);
+document.getElementById('notif-mark-read').addEventListener('click', markAllNotifsRead);
+document.addEventListener('pointerdown', e => {
+  if (!notifOpen) return;
+  if (notifPanel.contains(e.target) || notifBtn.contains(e.target)) return;
+  closeNotifPanel();
+});
+
 function updateLandingLogin() {
   const b = document.getElementById('landing-login');
   b.textContent = me ? 'MY COMMUNITIES' : 'LOG IN';
@@ -1330,6 +1697,7 @@ async function bootstrapSession() {
       authEl.hidden = true;
       updateMeChip();
       updateLandingLogin();
+      loadNotifications();
       return;
     } catch { api.setToken(''); }
   }
@@ -1376,6 +1744,7 @@ async function enterCommunity(id, updateHash = true) {
   authEl.hidden = true;
   setEntryMode(false);
   updateCommunityHud();
+  loadNotifications();
   setNav('gallery');
   await refreshCommunity();
   await loadCommunityExtras();
@@ -1484,6 +1853,7 @@ authForm.addEventListener('submit', async (e) => {
     api.setToken(r.token);
     me = r.profile;
     updateMeChip();
+    loadNotifications();
     await afterAuthSuccess();
   } catch (err) {
     authErr.textContent = String(err.message || 'SOMETHING WENT WRONG').toUpperCase();
@@ -1927,6 +2297,7 @@ async function logoutEverywhere() {
   allCommunities = [];
   pendingAuthAction = null;
   updateMeChip();
+  loadNotifications();
   updateLandingLogin();
   await showLanding(true);
 }

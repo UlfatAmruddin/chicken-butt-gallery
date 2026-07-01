@@ -106,6 +106,18 @@
 </div>
 
 <button id="me-chip" class="mono" hidden>@user</button>
+<button id="notif-btn" aria-label="Notifications" title="Notifications" hidden>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M13.7 21a2 2 0 0 1-3.4 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <span id="notif-badge" class="notif-badge" hidden>0</span>
+</button>
+<div id="notifications-panel" hidden>
+  <div class="np-head mono">NOTIFICATIONS <button id="notif-mark-read" class="mono">MARK ALL READ</button></div>
+  <div id="notif-list" class="notif-list"></div>
+  <p id="notif-empty" class="mono dim" hidden>NOTHING YET. LIKES AND COMMENTS ON YOUR PHOTOS SHOW UP HERE.</p>
+</div>
 <button id="community-chip" class="mono" hidden>COMMUNITY</button>
 <button id="invite-tools-btn" class="mono" hidden>Invite</button>
 <button class="lets-talk" id="lets-talk">Let's Talk</button>
@@ -197,7 +209,7 @@
         <button type="button" id="de-cancel" class="mono">CANCEL</button>
       </div>
     </form>
-    <figure class="d-hero"><img id="d-img" alt=""></figure>
+    <figure class="d-hero"><img id="d-img" alt=""><span class="zoom-hint" aria-hidden="true">Scroll to zoom &middot; drag to pan</span></figure>
     <div class="d-cols">
       <p id="d-p1"></p>
       <p id="d-p2"></p>

@@ -1,7 +1,7 @@
 const http = require('http');
 const crypto = require('crypto');
 
-const { users, sessions, posts, albums, communities, invites, auditEvents, saveJSON } = require('./lib/store');
+const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
 const {
   send, readBody, authUser, createSession, tooManyAuthAttempts, hashPass,
@@ -11,7 +11,8 @@ const {
   requestCommunityId, joinedCommunities, resolveCommunityForAuth, requireAuth, requireCommunity,
   scopedPosts, scopedAlbums, userPhotoCount, publicProfile, albumCoverFile, publicAlbum,
   communityCoverFile, publicCommunity, canManagePost, assertSameCommunityPhoto,
-  saveDataUrlImage, safeUnlinkAsset, addAudit, memberList, publicPrompt, activityFeed,
+  saveDataUrlImage, safeUnlinkAsset, addAudit, addNotification, publicNotification,
+  memberList, publicPrompt, activityFeed,
 } = require('./lib/helpers');
 
 /* ---------------- API ---------------- */
@@ -91,6 +92,37 @@ async function handleApi(req, res, pathname, params) {
       }
       saveJSON('users.json', users);
       return send(res, 200, publicProfile(u));
+    }
+
+    /* ---------------- notifications inbox (per user) ---------------- */
+    if (req.method === 'GET' && pathname === '/api/notifications') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const me = auth.user.username;
+      const list = notifications
+        .filter(n => n.to === me)
+        .sort((a, b) => b.created - a.created)
+        .slice(0, 50)
+        .map(publicNotification);
+      return send(res, 200, { notifications: list, unread: list.filter(n => !n.read).length });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/notifications/read') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const me = auth.user.username;
+      const raw = String(await readBody(req, 64 * 1024).catch(() => Buffer.from('')));
+      const b = raw ? JSON.parse(raw) : {};
+      const ids = Array.isArray(b.ids) ? new Set(b.ids.map(String)) : null;
+      let changed = 0;
+      notifications.forEach(n => {
+        if (n.to !== me || n.read) return;
+        if (ids && !ids.has(n.id)) return;
+        n.read = true;
+        changed++;
+      });
+      if (changed) saveJSON('notifications.json', notifications);
+      return send(res, 200, { ok: true, marked: changed });
     }
 
     /* ---------------- communities + invites ---------------- */
@@ -469,6 +501,7 @@ async function handleApi(req, res, pathname, params) {
       const i = post.likes.indexOf(name);
       if (i >= 0) post.likes.splice(i, 1); else post.likes.push(name);
       saveJSON('posts.json', posts);
+      if (i < 0) addNotification(post.username, post.communityId, 'like', name, post.id, { title: post.title });
       return send(res, 200, { count: post.likes.length, liked: i < 0 });
     }
 
@@ -486,6 +519,15 @@ async function handleApi(req, res, pathname, params) {
       const comment = { id: crypto.randomBytes(6).toString('hex'), username: auth.user.username, text, created: Date.now() };
       post.comments.push(comment);
       saveJSON('posts.json', posts);
+      addNotification(post.username, post.communityId, 'comment', auth.user.username, post.id, { title: post.title, text });
+      // @mentions: notify every real community member tagged in the text (minus the author + post owner, who already gets a comment notification)
+      const members = communityMembers(c);
+      const mentioned = new Set((text.match(/@([a-z0-9_]{3,20})/g) || []).map(m => m.slice(1).toLowerCase()));
+      mentioned.forEach(name => {
+        if (name === auth.user.username || name === post.username) return;
+        if (!members[name]) return;
+        addNotification(name, post.communityId, 'mention', auth.user.username, post.id, { title: post.title, text });
+      });
       return send(res, 200, comment);
     }
 
