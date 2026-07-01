@@ -5,6 +5,7 @@ import { makeCardTexture } from './js/textures.js';
 import { api } from './js/api.js';
 import { toast } from './js/toast.js';
 import { loadImage } from './js/images.js';
+import { initCinema } from './js/cinema.js';
 const gsap = window.gsap;
 
 let me = null;               // logged-in user's profile
@@ -647,6 +648,10 @@ function fillDetail(p) {
     dEls.p2.textContent = `Spanning ${[p.cat, ...p.tags].join(', ').toLowerCase()}, the work reached audiences across every touchpoint that matters. The result: a piece of the internet people actually remember - measured not just in numbers, but in the messages that landed in our inbox the week it launched.`;
   }
   renderSocial(p);
+  // keep the fullscreen cinema image in sync when it is open (stepPhoto /
+  // slideshow both funnel through fillDetail). cinema is assigned during
+  // module init, well before any user action can call fillDetail.
+  if (cinema) cinema.refresh();
 }
 
 let detailFromOverlay = false;
@@ -792,14 +797,45 @@ function toggleSlideshow() {
 }
 
 if (slideBtn) slideBtn.addEventListener('click', toggleSlideshow);
+
+/* ============================================================
+   CINEMA MODE - immersive fullscreen viewing layered on the detail
+   hero. The controller is pure UI; PREV/NEXT/PLAY delegate straight
+   back to stepPhoto()/toggleSlideshow() so navigation and slideshow
+   keep working while the overlay is up. cinema.refresh() is called
+   from fillDetail() so stepPhoto()/slideshow advance the big image too.
+   ============================================================ */
+const cinema = initCinema({
+  getProject: () => detailProject,
+  step: (dir) => stepPhoto(dir),
+  isPlaying: () => slideshow.playing,
+  togglePlay: toggleSlideshow,
+  // shared with updateSlideAvailability() so cinema's PLAY control matches the
+  // detail row's #d-play, which is hidden for private / single-photo views.
+  isPlayable: slideshowUsable,
+});
+const cinemaBtn = document.getElementById('d-cinema');
+if (cinemaBtn && cinema) {
+  cinemaBtn.addEventListener('click', () => {
+    if (!detailProject) return;
+    cinema.open();
+  });
+}
 // NOTE: the pointerenter/pointerleave pause hooks live in the zoom section
 // below, where dHero is defined (avoids a temporal-dead-zone reference here).
+
+/* the slideshow only works for a community pool holding more than one photo.
+   shared by updateSlideAvailability() (detail row #d-play) and cinema's PLAY
+   control so both surfaces show/hide the control under the same condition. */
+function slideshowUsable() {
+  return pool.length > 1 && !!detailProject && !!detailProject.community;
+}
 
 /* show/hide the play control alongside PREV/NEXT. only useful with >1 photo,
    and it lives in the social row so it must share that row's visibility. */
 function updateSlideAvailability() {
   if (!slideBtn) return;
-  const usable = pool.length > 1 && detailProject && detailProject.community;
+  const usable = slideshowUsable();
   slideBtn.hidden = !usable;
   if (!usable && slideshow.playing) stopSlideshow();
 }
@@ -1012,6 +1048,7 @@ function showDetail() {
 
 function closeProject() {
   if (detail.style.display !== 'block') return;
+  if (cinema && cinema.isOpen()) cinema.close();
   stopSlideshow();
   resetDetailZoom();
   cardsAnimating = true;
@@ -1590,27 +1627,29 @@ dCommentInput.addEventListener('focus', pauseSlideshow);
 dCommentInput.addEventListener('blur', resumeSlideshow);
 
 window.addEventListener('keydown', (e) => {
-  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
-      && detail.style.display === 'block') {
-    const ae = document.activeElement;
-    const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
-    const modalOpen = !uploadModal.hidden || !albumModal.hidden
-      || !pickAlbumModal.hidden || !addPhotosModal.hidden;
-    if (!typing && !modalOpen) {
-      e.preventDefault();
-      stepPhoto(e.key === 'ArrowLeft' ? -1 : 1);
-      return;
-    }
+  // shared guard for the detail-page shortcuts (arrows / P / F): they only fire
+  // with a photo open, and never while typing in a field or with a modal up.
+  const ae = document.activeElement;
+  const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+  const modalOpen = !uploadModal.hidden || !albumModal.hidden
+    || !pickAlbumModal.hidden || !addPhotosModal.hidden;
+  const detailKeyOk = detail.style.display === 'block' && !typing && !modalOpen;
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && detailKeyOk) {
+    e.preventDefault();
+    stepPhoto(e.key === 'ArrowLeft' ? -1 : 1);
+    return;
   }
   // "P" toggles the slideshow while a photo is open (not while typing / in a modal)
-  if ((e.key === 'p' || e.key === 'P') && detail.style.display === 'block') {
-    const ae = document.activeElement;
-    const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
-    const modalOpen = !uploadModal.hidden || !albumModal.hidden
-      || !pickAlbumModal.hidden || !addPhotosModal.hidden;
-    if (!typing && !modalOpen) { e.preventDefault(); toggleSlideshow(); return; }
+  if ((e.key === 'p' || e.key === 'P') && detailKeyOk) {
+    e.preventDefault(); toggleSlideshow(); return;
+  }
+  // "F" toggles cinema mode while a photo is open (same guard)
+  if ((e.key === 'f' || e.key === 'F') && detailKeyOk && cinema && detailProject) {
+    e.preventDefault(); cinema.toggle(); return;
   }
   if (e.key === 'Escape') {
+    // cinema mode sits on top of everything - fold it first
+    if (cinema && cinema.isOpen()) { e.preventDefault(); cinema.close(); return; }
     if (!uploadModal.hidden) closeUpload();
     else if (!albumModal.hidden) closeAlbumModal();
     else if (!pickAlbumModal.hidden) closePickAlbum();

@@ -236,6 +236,7 @@
         <button id="d-locate" class="mono share-btn locate-btn" title="Spin the sphere to this photo">FIND ON SPHERE&nbsp;&#9678;</button>
         <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
         <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8615;</button>
+        <button id="d-cinema" class="mono share-btn cinema-btn" title="Cinema mode (F)">CINEMA&nbsp;&#9634;</button>
         <button id="d-play" class="mono play-btn" aria-pressed="false" title="Play slideshow" hidden>
           <span class="play-ring" aria-hidden="true">
             <svg viewBox="0 0 24 24">
@@ -258,6 +259,23 @@
     <div class="d-footer mono">CHICKEN BUTT GALLERY&reg; - ALL RIGHTS RESERVED</div>
   </div>
 </section>
+
+<!-- ======= CINEMA MODE OVERLAY ======= -->
+<div id="cinema-layer" hidden aria-hidden="true" role="dialog" aria-label="Cinema mode">
+  <div class="cinema-backdrop" aria-hidden="true"></div>
+  <div class="cinema-stage">
+    <img class="cinema-img" alt="">
+  </div>
+  <div class="cinema-meta mono" aria-live="polite"></div>
+  <button class="cinema-ctl cinema-prev mono" type="button" aria-label="Previous photo">&#8249;</button>
+  <button class="cinema-ctl cinema-next mono" type="button" aria-label="Next photo">&#8250;</button>
+  <div class="cinema-bar">
+    <button class="cinema-ctl cinema-play mono" type="button" aria-pressed="false" title="Play slideshow" aria-label="Play slideshow">
+      <span class="cinema-play-glyph" aria-hidden="true">&#9654;</span>
+    </button>
+    <button class="cinema-ctl cinema-close mono" type="button" aria-label="Exit cinema mode">&#10005;</button>
+  </div>
+</div>
 
 <!-- ======= PEOPLE / PROFILES ======= -->
 <section id="people" aria-hidden="true">

@@ -360,7 +360,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   letter-spacing: .08em; text-transform: uppercase; color: #d2d2d2;
   padding: 6px 12px; border-radius: 999px;
   border: 1px solid #2a2a2a; background: #111;
-  cursor: pointer; transition: border-color .2s, color .2s;
+  cursor: pointer; transition: border-color .2s, color .2s, transform .2s;
 }
 .place-chip:hover { border-color: #777; color: #fff; }
 .place-chip .place-pin { color: #616161; }
@@ -908,6 +908,89 @@ textarea { resize: vertical; }
 #profile-share, #album-share { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
 #profile-share:hover, #album-share:hover { color: #fff; }
 
+/* CINEMA button in the detail action row */
+.cinema-btn { display: inline-flex; align-items: center; transition: color .2s, letter-spacing .2s; }
+.cinema-btn:hover { color: #fff; letter-spacing: .04em; }
+
+/* ---------- cinema mode (immersive fullscreen viewer) ---------- */
+#cinema-layer {
+  position: fixed; inset: 0; z-index: 150;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+/* ambient blurred twin of the same photo, dimmed behind the frame */
+.cinema-backdrop {
+  position: absolute; inset: 0;
+  background-position: center; background-size: cover; background-repeat: no-repeat;
+  transform: scale(1.25);
+  filter: blur(46px) brightness(0.42) saturate(1.15);
+  opacity: 0.85; pointer-events: none;
+}
+.cinema-backdrop::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.82) 100%);
+}
+.cinema-stage {
+  position: relative; z-index: 1;
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 4vmin;
+}
+.cinema-img {
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  object-fit: contain; display: block;
+  box-shadow: 0 24px 90px rgba(0,0,0,0.7);
+  -webkit-user-select: none; user-select: none; -webkit-user-drag: none;
+}
+.cinema-meta {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 2; max-width: 80vw;
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: #cfcfcf; text-align: center;
+  background: rgba(0,0,0,.4);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.cinema-ctl {
+  color: #cfcfcf;
+  background: rgba(12,12,12,0.55);
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 999px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: color .2s, border-color .2s, background .2s, transform .15s;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.cinema-ctl:hover { color: #fff; border-color: rgba(255,255,255,0.4); background: rgba(30,30,30,0.7); }
+.cinema-ctl:active { transform: scale(0.94); }
+.cinema-prev, .cinema-next {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 52px; height: 52px; font-size: 26px; line-height: 1;
+}
+.cinema-prev { left: 22px; }
+.cinema-next { right: 22px; }
+.cinema-prev:active, .cinema-next:active { transform: translateY(-50%) scale(0.94); }
+.cinema-bar {
+  position: absolute; top: 22px; right: 22px; z-index: 2;
+  display: flex; gap: 10px; align-items: center;
+}
+.cinema-play { width: 46px; height: 46px; font-size: 12px; }
+.cinema-play .cinema-play-glyph { line-height: 1; }
+.cinema-play.playing { color: #fff; border-color: rgba(255,255,255,0.4); }
+.cinema-close { width: 46px; height: 46px; font-size: 15px; }
+@media (max-width: 640px) {
+  .cinema-prev, .cinema-next { width: 42px; height: 42px; font-size: 22px; }
+  .cinema-prev { left: 12px; } .cinema-next { right: 12px; }
+  .cinema-bar { top: 14px; right: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cinema-ctl, .cinema-ctl:active, .cinema-prev:active, .cinema-next:active { transition: none; transform: none; }
+  .cinema-prev, .cinema-next { transform: translateY(-50%); }
+}
+
 /* ---------- flat grid / list view ---------- */
 #flat-view {
   position: fixed; inset: 0; z-index: 60;
@@ -1086,7 +1169,9 @@ textarea { resize: vertical; }
 #d-edit-form { max-width: 720px; margin-top: 22px; }
 #d-edit-form label { display: block; color: #9a9a9a; margin-bottom: 12px; }
 
-.pp-tile { position: relative; }
+/* clip the tile to the same 8px radius as its <img> so the skeleton
+   shimmer never peeks through the rounded corners post-load */
+.pp-tile { position: relative; border-radius: 8px; overflow: hidden; }
 .pp-del {
   position: absolute; top: 8px; right: 8px;
   width: 28px; height: 28px; border-radius: 50%;
@@ -1167,4 +1252,156 @@ textarea { resize: vertical; }
   .admin-actions { width: 100%; justify-content: flex-start; }
   .inline-form { flex-direction: column; align-items: stretch; }
   .inline-form .pill-white { width: 100%; }
+}
+
+/* ================================================================
+   INTERACTION POLISH PASS
+   skeleton image loading, unified hover/press feedback,
+   reduced-motion + focus/contrast support. all additive, scoped
+   to selectors that already exist in the markup.
+   ================================================================ */
+
+/* ---------- image skeletons (shimmer behind the <img>) ---------- */
+/* the media wrappers get an animated grey shimmer; each <img> is made
+   transparent so the shimmer reads through until its pixels paint,
+   then object-fit:cover hides the shimmer completely. */
+@keyframes skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.flat-card .fc-media,
+.mini-photo .mp-media,
+.album-photos .pp-tile,
+#profile-photos .pp-tile {
+  background-color: #111;
+  background-image: linear-gradient(100deg, #131313 30%, #1d1d1d 50%, #131313 70%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skel-shimmer 1.5s ease-in-out infinite;
+}
+/* imgs that carried a solid #111 fill would mask the shimmer; make them
+   transparent so the wrapper's shimmer shows until they load */
+.flat-card .fc-img,
+.album-photos img,
+#profile-photos img,
+.mini-photo img {
+  background: transparent;
+}
+/* album covers are a background-image on the tile itself (not a layered
+   <img>), so they are intentionally left OUT of the shimmer group above;
+   shimmering them would zoom + slide the real cover photo forever */
+
+/* ---------- unified hover-lift + press micro-interactions ---------- */
+/* consistent crisp press on the shared button families */
+.pill-white:active,
+.ghost-pill:active,
+#empty-wall button:active,
+.lets-talk:active,
+.circle-btn:active,
+.pill-nav button:active,
+#filter-btn:active,
+.d-nav button:active,
+.pe-pick:active,
+.fp-tag:active,
+.scope-chip:active,
+.place-chip:active,
+.notif-row:active,
+.pick-album-row:active,
+.ap-btn:active {
+  transform: scale(0.96);
+}
+/* cards already lift on hover; add a matching press so the whole family
+   feels responsive on click/tap */
+.flat-card:active,
+.album-card:active,
+.person-card:active,
+.community-card:active,
+.mini-photo:active {
+  transform: translateY(-1px) scale(0.99);
+}
+/* chip families gain a subtle hover-lift to match the cards */
+.fp-tag, .scope-chip {
+  transition: all .2s, transform .15s;
+}
+.fp-tag:hover, .scope-chip:hover { transform: translateY(-1px); }
+.place-chip:hover { transform: translateY(-1px); }
+/* likers avatars already lift; add a press for consistency */
+.likers-av:active { transform: scale(0.92); }
+
+/* ---------- consistent focus ring across interactive elements ---------- */
+a:focus-visible,
+.flat-card:focus-visible,
+.album-card:focus-visible,
+.person-card:focus-visible,
+.community-card:focus-visible,
+.mini-photo:focus-visible,
+.circle-btn:focus-visible,
+.pill-white:focus-visible,
+.ghost-pill:focus-visible,
+.d-nav button:focus-visible,
+.fp-tag:focus-visible,
+.scope-chip:focus-visible,
+.place-chip:focus-visible,
+.reaction:focus-visible,
+.like-btn:focus-visible,
+.save-btn:focus-visible,
+.notif-row:focus-visible,
+.pick-album-row:focus-visible,
+.ap-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+/* ---------- prefers-contrast: strengthen borders ---------- */
+@media (prefers-contrast: more) {
+  .flat-card, .album-card, .person-card, .community-card,
+  .mini-photo, .room-panel, .admin-panel, .modal-box,
+  .fp-tag, .scope-chip, .place-chip, .ghost-pill,
+  .d-nav button, .like-btn, .reaction, .notif-row,
+  .pick-album-row, .activity-row, .admin-row {
+    border-color: #6a6a6a;
+  }
+  input, textarea, select { border-color: #6a6a6a; }
+}
+
+/* ---------- reduced motion: disable shimmer, lifts, and press ---------- */
+@media (prefers-reduced-motion: reduce) {
+  /* stop the skeleton shimmer, keep a static grey fill */
+  .flat-card .fc-media,
+  .mini-photo .mp-media,
+  .album-photos .pp-tile,
+  #profile-photos .pp-tile {
+    animation: none;
+    background-image: none;
+  }
+  /* neutralise hover-lift + press transforms site-wide */
+  #empty-wall button:hover, #empty-wall button:active,
+  .lets-talk:hover, .lets-talk:active,
+  .logo:hover,
+  .circle-btn:hover, .circle-btn:active,
+  #filter-btn:hover, #filter-btn:active,
+  .pill-white:hover, .pill-white:active,
+  .ghost-pill:hover, .ghost-pill:active,
+  .flat-card:hover, .flat-card:active,
+  .album-card:hover, .album-card:active,
+  .person-card:hover, .person-card:active,
+  .community-card:hover, .community-card:active,
+  .mini-photo:hover, .mini-photo:active,
+  .pill-nav button:active,
+  .d-nav button:active,
+  .pe-pick:active,
+  .fp-tag:hover, .fp-tag:active,
+  .scope-chip:hover, .scope-chip:active,
+  .place-chip:hover, .place-chip:active,
+  .likers-av:hover, .likers-av:active,
+  .reaction:hover, .reaction:active,
+  .like-btn:active,
+  .notif-row:active,
+  .pick-album-row:active,
+  .ap-btn:active,
+  #notif-btn:hover {
+    transform: none;
+  }
+  /* trim non-essential transitions; opacity fades stay light */
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
