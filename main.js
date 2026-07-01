@@ -29,6 +29,7 @@ function postToProject(p) {
     tags: (p.tags && p.tags.length) ? p.tags : ['PHOTO'],
     year: p.year || new Date(p.created).getFullYear(),
     caption: p.caption || '',
+    place: p.place || '',
     layout: p.layout || 'full',
     logo: 'mono',
     community: true,
@@ -594,6 +595,8 @@ const dEls = {
   client: document.getElementById('d-client'),
   year: document.getElementById('d-year'),
   tags: document.getElementById('d-tags'),
+  placeRow: document.getElementById('d-place-row'),
+  place: document.getElementById('d-place'),
   img: document.getElementById('d-img'),
   p1: document.getElementById('d-p1'),
   p2: document.getElementById('d-p2'),
@@ -604,6 +607,18 @@ function fillDetail(p) {
   dEls.client.textContent = p.community ? '@' + p.username : p.client;
   dEls.year.textContent = p.year;
   dEls.tags.textContent = [p.cat, ...p.tags].join(' / ');
+  const place = (p.place || '').trim();
+  dEls.placeRow.hidden = !place;
+  dEls.place.innerHTML = '';
+  if (place) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'place-chip';
+    chip.innerHTML = `<span class="place-pin" aria-hidden="true">&#9678;</span>${esc(place)}`;
+    chip.title = 'Find memories from ' + place;
+    chip.addEventListener('click', () => { closeProject(); openFlatSearch(place); });
+    dEls.place.appendChild(chip);
+  }
   dEls.img.src = p.heroSrc || p.src || '';
   resetDetailZoom();
   detailProject = p;
@@ -1144,6 +1159,7 @@ document.getElementById('d-edit-btn').addEventListener('click', () => {
   document.getElementById('de-title').value = p.title;
   document.getElementById('de-client').value = p.client.startsWith('@') ? '' : p.client;
   document.getElementById('de-year').value = p.year;
+  document.getElementById('de-place').value = p.place || '';
   document.getElementById('de-caption').value = p.caption || '';
   document.getElementById('de-err').textContent = '';
   getDetailScopes = buildScopeChips(document.getElementById('de-scopes'), p.tags);
@@ -1164,6 +1180,7 @@ dEditForm.addEventListener('submit', async (e) => {
       title: document.getElementById('de-title').value.trim(),
       client: document.getElementById('de-client').value.trim(),
       year: document.getElementById('de-year').value,
+      place: document.getElementById('de-place').value.trim(),
       caption: document.getElementById('de-caption').value.trim(),
       tags: getDetailScopes(),
     });
@@ -1720,7 +1737,7 @@ function filterSortFlat() {
   if (q) {
     list = list.filter(p => {
       const tags = Array.isArray(p.tags) ? p.tags.join(' ') : '';
-      const hay = `${p.title || ''} ${p.username || ''} ${p.caption || ''} ${tags} ${p.cat || ''}`.toLowerCase();
+      const hay = `${p.title || ''} ${p.username || ''} ${p.caption || ''} ${tags} ${p.cat || ''} ${p.place || ''}`.toLowerCase();
       return hay.includes(q);
     });
   }
@@ -1797,6 +1814,14 @@ function openFlatView(mode = 'grid', saved = false) {
 
 /* open the private SAVED tray (reuses the flat grid/list renderer) */
 function openSaved(mode = 'grid') { openFlatView(mode, true); }
+
+/* open the flat gallery pre-filtered by a search term (used by place chips) */
+function openFlatSearch(term) {
+  openFlatView('grid', false);
+  flatQuery = term || '';
+  flatSearchEl.value = flatQuery;
+  renderFlatView();
+}
 
 function closeFlatView() {
   if (!flatOpen) return;
@@ -3024,12 +3049,24 @@ async function showAlbum(id, updateHash = true) {
 function renderAlbumPhotos(data, own) {
   const wrap = document.getElementById('album-photos');
   wrap.innerHTML = '';
+  wrap.classList.toggle('is-owner', !!own);
+  // snapshot of the current order; a settled drop compares against it to skip no-ops
+  const order = data.posts.map(p => p.id);
   data.posts.forEach(post => {
     const tile = document.createElement('div');
     tile.className = 'pp-tile';
+    tile.dataset.id = post.id;
     const img = document.createElement('img');
     img.src = mediaSrc(post.file); img.alt = post.title; img.title = post.title;
+    img.draggable = false;
     tile.appendChild(img);
+    const isCover = data.album.cover === post.id;
+    if (isCover) {
+      const badge = document.createElement('span');
+      badge.className = 'ap-cover-badge';
+      badge.textContent = 'COVER';
+      tile.appendChild(badge);
+    }
     tile.addEventListener('click', (e) => {
       if (e.target.closest('.ap-actions')) return;
       openDetailFor(postToProject(post));
@@ -3038,18 +3075,104 @@ function renderAlbumPhotos(data, own) {
       const actions = document.createElement('div');
       actions.className = 'ap-actions';
       const coverBtn = document.createElement('button');
-      coverBtn.className = 'ap-btn' + (data.album.cover === post.id ? ' is-cover' : '');
-      coverBtn.textContent = '★'; coverBtn.title = 'Set as cover';
-      coverBtn.addEventListener('click', (e) => { e.stopPropagation(); albumOp({ cover: post.id }, 'COVER SET'); });
+      coverBtn.className = 'ap-btn ap-cover-btn' + (isCover ? ' is-cover' : '');
+      coverBtn.textContent = isCover ? 'COVER' : 'SET AS COVER';
+      coverBtn.title = 'Set as album cover';
+      coverBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (isCover) return;
+        albumOp({ cover: post.id }, 'COVER SET');
+      });
       const rm = document.createElement('button');
-      rm.className = 'ap-btn'; rm.textContent = '✕'; rm.title = 'Remove from album';
+      rm.className = 'ap-btn ap-rm-btn'; rm.textContent = '✕'; rm.title = 'Remove from album';
       rm.addEventListener('click', (e) => { e.stopPropagation(); albumOp({ removePhotoId: post.id }, 'REMOVED FROM ALBUM'); });
       actions.appendChild(coverBtn); actions.appendChild(rm);
       tile.appendChild(actions);
+      makeTileDraggable(tile, wrap, order);
     }
     wrap.appendChild(tile);
   });
   document.getElementById('album-no-photos').hidden = data.posts.length > 0;
+}
+
+/* Make an album tile reorderable via HTML5 drag-and-drop (mouse) with a
+   pointer fallback for touch. `order` is the render-time id sequence; a settled
+   drop reads the DOM and only persists when the order actually changed (a real
+   reorder re-renders the album, so this snapshot never needs updating). */
+function makeTileDraggable(tile, wrap, order) {
+  tile.draggable = true;
+  tile.classList.add('ap-draggable');
+
+  const persist = () => {
+    const next = [...wrap.querySelectorAll('.pp-tile')].map(t => t.dataset.id);
+    if (next.length === order.length && next.every((id, i) => id === order[i])) return;
+    albumOp({ photoIds: next }, 'ORDER SAVED');
+  };
+  const clearMarks = () => {
+    wrap.querySelectorAll('.pp-tile.ap-over').forEach(t => t.classList.remove('ap-over'));
+  };
+  // slot `moving` before/after `target` depending on which half the pointer is over
+  const insertAt = (moving, target, x, y) => {
+    const box = target.getBoundingClientRect();
+    const after = (y - box.top) > box.height / 2 || (x - box.left) > box.width / 2;
+    wrap.insertBefore(moving, after ? target.nextSibling : target);
+  };
+
+  /* ---- native drag-and-drop (desktop) ---- */
+  tile.addEventListener('dragstart', (e) => {
+    tile.classList.add('ap-dragging');
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', tile.dataset.id); } catch {} }
+  });
+  tile.addEventListener('dragend', () => {
+    tile.classList.remove('ap-dragging');
+    clearMarks();
+    persist();
+  });
+  tile.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const dragging = wrap.querySelector('.pp-tile.ap-dragging');
+    if (!dragging || dragging === tile) return;
+    clearMarks();
+    tile.classList.add('ap-over');
+    insertAt(dragging, tile, e.clientX, e.clientY);
+  });
+  tile.addEventListener('drop', (e) => { e.preventDefault(); clearMarks(); });
+
+  /* ---- pointer fallback (touch) ---- */
+  let touchDragging = false;
+  tile.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;  // native DnD handles mouse
+    if (e.target.closest('.ap-actions')) return;
+    let started = false;
+    const startY = e.clientY, startX = e.clientX;
+    const move = (ev) => {
+      if (!started) {
+        if (Math.abs(ev.clientY - startY) < 8 && Math.abs(ev.clientX - startX) < 8) return;
+        started = true; touchDragging = true;
+        tile.classList.add('ap-dragging');
+        try { tile.setPointerCapture(e.pointerId); } catch {}
+      }
+      ev.preventDefault();
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const over = el && el.closest && el.closest('.pp-tile');
+      if (!over || over === tile || over.parentElement !== wrap) return;
+      insertAt(tile, over, ev.clientX, ev.clientY);
+    };
+    const up = () => {
+      tile.removeEventListener('pointermove', move);
+      tile.removeEventListener('pointerup', up);
+      tile.removeEventListener('pointercancel', up);
+      try { tile.releasePointerCapture(e.pointerId); } catch {}
+      if (started) { tile.classList.remove('ap-dragging'); clearMarks(); persist(); }
+      setTimeout(() => { touchDragging = false; }, 0);
+    };
+    tile.addEventListener('pointermove', move);
+    tile.addEventListener('pointerup', up);
+    tile.addEventListener('pointercancel', up);
+  });
+  // swallow the click that follows a touch drag so it does not open the photo
+  tile.addEventListener('click', (e) => { if (touchDragging) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
 async function albumOp(body, okMsg) {
@@ -3471,6 +3594,7 @@ uploadSubmit.addEventListener('click', async () => {
         layout: uploadLayout.value,
         year: document.getElementById('upload-year').value,
         client: document.getElementById('upload-client').value.trim(),
+        place: document.getElementById('upload-place').value.trim(),
         caption: document.getElementById('upload-caption').value.trim(),
         tags: getUploadScopes(),
         promptId: uploadPrompt.value,
@@ -3484,6 +3608,7 @@ uploadSubmit.addEventListener('click', async () => {
     uploadPreview.hidden = true;
     uploadBatch.innerHTML = '';
     uploadTitle.value = '';
+    document.getElementById('upload-place').value = '';
     document.getElementById('upload-caption').value = '';
     dropZone.firstChild.textContent = 'CLICK TO CHOOSE A PHOTO';
     await loadCommunityExtras();

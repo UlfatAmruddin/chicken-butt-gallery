@@ -353,6 +353,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   color: #d2d2d2;
 }
 .d-meta .lbl { display: block; color: #616161; margin-bottom: 7px; }
+#d-place-row { grid-column: 1 / -1; }
+.place-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: 'Space Mono', monospace; font-size: 12px;
+  letter-spacing: .08em; text-transform: uppercase; color: #d2d2d2;
+  padding: 6px 12px; border-radius: 999px;
+  border: 1px solid #2a2a2a; background: #111;
+  cursor: pointer; transition: border-color .2s, color .2s;
+}
+.place-chip:hover { border-color: #777; color: #fff; }
+.place-chip .place-pin { color: #616161; }
+.place-chip:hover .place-pin { color: #fff; }
 
 .d-hero {
   position: relative;
@@ -812,19 +824,43 @@ textarea { resize: vertical; }
 .album-photos img {
   width: 100%; aspect-ratio: 1; object-fit: cover;
   border-radius: 8px; display: block; background: #111;
+  -webkit-user-drag: none; user-select: none;
 }
 .album-photos .ap-actions {
-  position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;
-  opacity: 0; transition: opacity .2s;
+  position: absolute; top: 8px; right: 8px; left: 8px;
+  display: flex; gap: 6px; align-items: flex-start; justify-content: flex-end;
+  opacity: 0; transition: opacity .2s; pointer-events: none;
 }
-.album-photos .pp-tile:hover .ap-actions { opacity: 1; }
+.album-photos .pp-tile:hover .ap-actions,
+.album-photos .pp-tile:focus-within .ap-actions { opacity: 1; pointer-events: auto; }
 .ap-btn {
-  width: 26px; height: 26px; border-radius: 50%;
-  background: rgba(0,0,0,0.72); color: #fff; font-size: 11px;
+  height: 26px; border-radius: 13px; padding: 0 10px;
+  background: rgba(0,0,0,0.72); color: #fff;
+  font-family: 'Space Mono', monospace; font-size: 10px;
+  letter-spacing: .1em; text-transform: uppercase;
   display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,0.16); white-space: nowrap;
+  transition: background .18s, color .18s, border-color .18s;
 }
-.ap-btn:hover { background: #fff; color: #000; }
-.ap-btn.is-cover { background: #fff; color: #000; }
+.ap-btn:hover { background: #fff; color: #000; border-color: #fff; }
+.ap-rm-btn { width: 26px; padding: 0; border-radius: 50%; font-size: 11px; }
+.ap-cover-btn.is-cover { background: #fff; color: #000; border-color: #fff; cursor: default; }
+/* current-cover badge, always visible */
+.album-photos .ap-cover-badge {
+  position: absolute; top: 8px; left: 8px; z-index: 1;
+  background: #fff; color: #000;
+  font-family: 'Space Mono', monospace; font-size: 9px;
+  letter-spacing: .12em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 10px; pointer-events: none;
+}
+/* drag-to-reorder states (owner view only) */
+.album-photos.is-owner .pp-tile.ap-draggable { cursor: grab; }
+.album-photos .pp-tile.ap-dragging { opacity: .45; cursor: grabbing; transform: scale(.97); }
+.album-photos .pp-tile.ap-over::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 10px;
+  outline: 2px dashed rgba(255,255,255,0.55); outline-offset: 2px; pointer-events: none;
+}
+.album-photos .pp-tile { transition: transform .15s ease, opacity .15s ease; }
 
 /* add-to-album modal list */
 .pick-album-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; max-height: 320px; overflow-y: auto; }

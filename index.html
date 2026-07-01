@@ -195,6 +195,7 @@
       <div><span class="lbl">CLIENT</span><span id="d-client"></span></div>
       <div><span class="lbl">YEAR</span><span id="d-year"></span></div>
       <div><span class="lbl">SCOPE</span><span id="d-tags"></span></div>
+      <div id="d-place-row" hidden><span class="lbl">PLACE</span><span id="d-place"></span></div>
     </div>
     <div id="d-owner" class="mono" hidden>
       <button id="d-edit-btn" class="mono">EDIT PHOTO</button>
@@ -208,6 +209,7 @@
         <label class="mono">CLIENT<input id="de-client" maxlength="30"></label>
         <label class="mono">YEAR<input id="de-year" type="number" min="1900" max="2100"></label>
       </div>
+      <label class="mono">PLACE<input id="de-place" maxlength="60" placeholder="WHERE IT HAPPENED"></label>
       <label class="mono">PHOTO BIO<textarea id="de-caption" rows="3" maxlength="300"></textarea></label>
       <div class="field">
         <span class="mono">SCOPES - PICK UP TO 3</span>
@@ -601,6 +603,7 @@
     <img id="upload-preview" alt="" hidden>
     <div id="upload-batch" class="upload-batch"></div>
     <label class="mono">TITLE<input id="upload-title" maxlength="40" placeholder="UNTITLED"></label>
+    <label class="mono">PLACE<input id="upload-place" maxlength="60" placeholder="e.g. THE CABIN / TOKYO"></label>
     <div class="pe-row">
       <label class="mono">CLIENT<input id="upload-client" maxlength="30" placeholder="YOU / A BRAND"></label>
       <label class="mono">YEAR<input id="upload-year" type="number" min="1900" max="2100"></label>

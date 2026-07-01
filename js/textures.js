@@ -13,6 +13,20 @@ export function makeCardTexture(p, img, maxAniso) {
   x.fillRect(0, 0, S, S);
   const pad = 18;
 
+  // soft luminance falloff behind the header/footer label bands so the
+  // Space Mono labels stay legible over bright photos (deterministic)
+  const bandH = 52;
+  const topBand = x.createLinearGradient(0, 0, 0, bandH);
+  topBand.addColorStop(0, 'rgba(0,0,0,0.55)');
+  topBand.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = topBand;
+  x.fillRect(0, 0, S, bandH);
+  const botBand = x.createLinearGradient(0, S - bandH, 0, S);
+  botBand.addColorStop(0, 'rgba(0,0,0,0)');
+  botBand.addColorStop(1, 'rgba(0,0,0,0.55)');
+  x.fillStyle = botBand;
+  x.fillRect(0, S - bandH, S, bandH);
+
   // header - client (left), project title (right)
   x.fillStyle = '#d9d9d9';
   x.font = p.logo === 'mono' ? '700 16px "Space Mono"' : '600 19px Inter';
@@ -35,6 +49,23 @@ export function makeCardTexture(p, img, maxAniso) {
     r = { x: full.x, y: full.y + (full.h - h) / 2, w: full.w, h };
   }
   if (img) coverDraw(x, img, r);
+
+  // premium gallery-print polish - subtle inner-glow vignette + 1px inset
+  // frame around the artwork rect (only when the rect has non-zero size)
+  if (r.w > 0 && r.h > 0) {
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    const inner = Math.min(r.w, r.h) * 0.34;
+    const outer = Math.hypot(r.w, r.h) / 2;
+    const vig = x.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.28)');
+    x.fillStyle = vig;
+    x.fillRect(r.x, r.y, r.w, r.h);
+    // faint inset frame reading as a matted gallery print
+    x.strokeStyle = 'rgba(255,255,255,0.10)';
+    x.lineWidth = 1;
+    x.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+  }
 
   // footer - category, boxed tags, year
   const fy = S - 22;

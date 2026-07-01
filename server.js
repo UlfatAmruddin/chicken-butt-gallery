@@ -476,6 +476,7 @@ async function handleApi(req, res, pathname, params) {
         username: ctx.auth.user.username,
         title: clean(b.title, 40) || 'UNTITLED',
         client: clean(b.client, 30),
+        place: clean(b.place, 60),
         caption: clean(b.caption, 300),
         year: Number.isFinite(yr) && yr >= 1900 && yr <= 2100 ? yr : new Date().getFullYear(),
         tags: Array.isArray(b.tags) ? b.tags.slice(0, 8).map(t => clean(t, 20).toUpperCase()).filter(Boolean) : [],
@@ -627,6 +628,7 @@ async function handleApi(req, res, pathname, params) {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       if (b.title !== undefined) post.title = clean(b.title, 40) || 'UNTITLED';
       if (b.client !== undefined) post.client = clean(b.client, 30);
+      if (b.place !== undefined) post.place = clean(b.place, 60);
       if (b.caption !== undefined) post.caption = clean(b.caption, 300);
       if (b.year !== undefined) {
         const y = parseInt(b.year, 10);
