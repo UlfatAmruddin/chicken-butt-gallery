@@ -205,6 +205,7 @@
       <button id="d-edit-btn" class="mono">EDIT PHOTO</button>
       <button id="d-add-album-btn" class="mono">ADD TO ALBUM</button>
       <button id="d-pin-btn" class="mono" hidden>PIN PHOTO</button>
+      <button id="d-spotlight-btn" class="mono" hidden>FEATURE THIS PHOTO</button>
       <button id="d-delete-btn" class="mono danger">DELETE PHOTO</button>
     </div>
     <form id="d-edit-form" hidden>
@@ -254,6 +255,7 @@
       </div>
       <div id="d-likers" class="likers" hidden></div>
       <div id="d-comments" class="d-comments"></div>
+      <button id="d-reply-target" class="mono reply-chip" type="button" hidden></button>
       <form id="d-comment-form" class="d-comment-form">
         <input id="d-comment-input" maxlength="500" placeholder="Add a comment&hellip;" autocomplete="off">
         <button type="submit" class="pill-white">Post</button>
@@ -422,6 +424,8 @@
         </div>
         <div class="album-actions">
           <button id="album-share" class="mono">SHARE</button>
+          <button id="album-contact-sheet" class="mono">SAVE AS SHEET&nbsp;&#8615;</button>
+          <span id="album-sheet-building" class="mono dim" hidden>BUILDING SHEET&hellip;</span>
           <span id="album-actions" hidden>
             <button id="album-edit-btn" class="mono">EDIT</button>
             <button id="album-add-photos-btn" class="mono">ADD PHOTOS</button>
@@ -504,6 +508,20 @@
       <p id="room-desc"></p>
       <p id="room-welcome"></p>
     </div>
+    <section class="room-panel room-spotlight-panel" id="room-spotlight" hidden>
+      <div class="section-head">
+        <h2 class="mono dim">SPOTLIGHT</h2>
+        <button id="room-spotlight-clear" class="mono" hidden>UNFEATURE</button>
+      </div>
+      <div class="room-spotlight" id="room-spotlight-card">
+        <div class="room-spotlight-media" id="room-spotlight-media"></div>
+        <div class="room-spotlight-meta">
+          <span class="mono dim room-spotlight-kicker">SPOTLIGHT</span>
+          <h3 id="room-spotlight-title"></h3>
+          <p class="mono dim" id="room-spotlight-owner"></p>
+        </div>
+      </div>
+    </section>
     <div class="room-grid">
       <section class="room-panel">
         <div class="section-head">

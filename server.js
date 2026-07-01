@@ -389,6 +389,25 @@ async function handleApi(req, res, pathname, params) {
       return send(res, 200, publicCommunity(c, auth.user.username));
     }
 
+    if ((req.method === 'POST' || req.method === 'DELETE') && seg[1] === 'communities' && seg[2] && seg[3] === 'spotlight' && seg[4]) {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const c = findCommunity(seg[2]);
+      if (!c) return send(res, 404, { error: 'No such community.' });
+      if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can spotlight photos.' });
+      const post = posts.find(p => p.id === seg[4] && p.communityId === c.id);
+      if (!post) return send(res, 404, { error: 'No such photo.' });
+      if (req.method === 'POST') {
+        c.spotlightPostId = post.id;
+        saveJSON('communities.json', communities);
+        addAudit(c.id, auth.user.username, 'photo.spotlighted', post.id, { title: post.title });
+        addNotification(post.username, c.id, 'spotlight', auth.user.username, post.id, { title: post.title });
+      } else {
+        if (c.spotlightPostId === post.id) { c.spotlightPostId = ''; saveJSON('communities.json', communities); }
+      }
+      return send(res, 200, publicCommunity(c, auth.user.username));
+    }
+
     if (req.method === 'GET' && seg[1] === 'communities' && seg[2] && seg[3] === 'invites') {
       const auth = requireAuth(req, res);
       if (!auth) return;
@@ -612,7 +631,16 @@ async function handleApi(req, res, pathname, params) {
       const text = clean(b.text, 500);
       if (!text) return send(res, 400, { error: 'Write something first.' });
       if (!Array.isArray(post.comments)) post.comments = [];
-      const comment = { id: crypto.randomBytes(6).toString('hex'), username: auth.user.username, text, created: Date.now() };
+      // optional single-level reply: parentId must name an existing top-level
+      // comment on this same post (a comment whose own parentId is falsy).
+      let parentId = '';
+      let parent = null;
+      if (b.parentId) {
+        parent = post.comments.find(x => x.id === b.parentId && !x.parentId);
+        if (!parent) return send(res, 400, { error: 'That comment no longer exists.' });
+        parentId = parent.id;
+      }
+      const comment = { id: crypto.randomBytes(6).toString('hex'), username: auth.user.username, text, parentId, created: Date.now() };
       post.comments.push(comment);
       saveJSON('posts.json', posts);
       addNotification(post.username, post.communityId, 'comment', auth.user.username, post.id, { title: post.title, text });
@@ -624,6 +652,11 @@ async function handleApi(req, res, pathname, params) {
         if (!members[name]) return;
         addNotification(name, post.communityId, 'mention', auth.user.username, post.id, { title: post.title, text });
       });
+      // reply: notify the parent comment's author, unless they are the actor,
+      // the post owner, or already @mentioned (all of whom got another notification), or a non-member.
+      if (parent && parent.username !== auth.user.username && parent.username !== post.username && !mentioned.has(parent.username) && members[parent.username]) {
+        addNotification(parent.username, post.communityId, 'reply', auth.user.username, post.id, { title: post.title, text });
+      }
       return send(res, 200, comment);
     }
 
@@ -640,6 +673,8 @@ async function handleApi(req, res, pathname, params) {
       const allowed = comment.username === auth.user.username || canManagePost(auth, post);
       if (!allowed) return send(res, 403, { error: 'You cannot delete this comment.' });
       post.comments.splice(ci, 1);
+      // deleting a top-level comment removes its direct replies too, so no orphans remain
+      if (!comment.parentId) post.comments = post.comments.filter(x => x.parentId !== comment.id);
       saveJSON('posts.json', posts);
       return send(res, 200, { ok: true });
     }
@@ -724,6 +759,8 @@ async function handleApi(req, res, pathname, params) {
         }
       });
       if (usersChanged) saveJSON('users.json', users);
+      // never let a stale spotlight survive its photo
+      if (c && c.spotlightPostId === photoId) { c.spotlightPostId = ''; saveJSON('communities.json', communities); }
       addAudit(post.communityId, auth.user.username, 'photo.deleted', photoId, { title: post.title });
       return send(res, 200, { ok: true });
     }

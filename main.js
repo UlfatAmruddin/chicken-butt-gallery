@@ -634,6 +634,10 @@ function fillDetail(p) {
   const canPin = !!(p.community && me && (isCommunityAdmin() || isAdminProfile()));
   pinBtn.hidden = !canPin;
   pinBtn.textContent = p.pinned ? 'UNPIN PHOTO' : 'PIN PHOTO';
+  const spotBtn = document.getElementById('d-spotlight-btn');
+  const isSpotlight = !!(currentCommunity && p.postId && currentCommunity.spotlightPostId === p.postId);
+  spotBtn.hidden = !canPin;
+  spotBtn.textContent = isSpotlight ? 'UNFEATURE' : 'FEATURE THIS PHOTO';
   document.getElementById('d-edit-form').hidden = true;
   const navHidden = pool.length <= 1;
   document.getElementById('d-prev').hidden = navHidden;
@@ -652,6 +656,7 @@ function fillDetail(p) {
     dEls.p1.textContent = `${p.title} is a ${p.cat.toLowerCase()}-led collaboration with ${p.client}, built to translate the brand's ambition into a living, breathing digital artefact. We prototyped early, tested often, and let the craft carry the idea from first sketch to final ship.`;
     dEls.p2.textContent = `Spanning ${[p.cat, ...p.tags].join(', ').toLowerCase()}, the work reached audiences across every touchpoint that matters. The result: a piece of the internet people actually remember - measured not just in numbers, but in the messages that landed in our inbox the week it launched.`;
   }
+  clearReply();   // a pending reply belongs to the photo we just left
   renderSocial(p);
   // keep the fullscreen cinema image in sync when it is open (stepPhoto /
   // slideshow both funnel through fillDetail). cinema is assigned during
@@ -1385,6 +1390,31 @@ document.getElementById('d-pin-btn').addEventListener('click', async () => {
   }
 });
 
+/* feature (spotlight) the current detail photo, or unfeature it if it already
+   is the community's spotlight. Updates currentCommunity from the response so
+   the room + detail label stay in sync, then refreshes the open room. */
+async function toggleSpotlight(postId) {
+  if (!postId || !currentCommunity) return;
+  const wasSpotlight = currentCommunity.spotlightPostId === postId;
+  try {
+    const method = wasSpotlight ? 'DELETE' : 'POST';
+    currentCommunity = await api.call(method, `/api/communities/${encodeURIComponent(currentCommunity.id)}/spotlight/${encodeURIComponent(postId)}`);
+    if (detailProject && detailProject.postId === postId) fillDetail(detailProject);
+    if (roomOpen) renderCommunityRoom();
+    toast(wasSpotlight ? 'SPOTLIGHT CLEARED' : 'PHOTO FEATURED');
+  } catch (err) {
+    toast(String(err.message || 'COULD NOT UPDATE SPOTLIGHT').toUpperCase());
+  }
+}
+
+document.getElementById('d-spotlight-btn').addEventListener('click', () => {
+  if (detailProject) toggleSpotlight(detailProject.postId);
+});
+
+document.getElementById('room-spotlight-clear').addEventListener('click', () => {
+  if (currentCommunity && currentCommunity.spotlightPostId) toggleSpotlight(currentCommunity.spotlightPostId);
+});
+
 document.getElementById('back-btn').addEventListener('click', closeProject);
 
 /* ---- reactions & comments (detail page) ---- */
@@ -1405,6 +1435,9 @@ const dLikersEl = document.getElementById('d-likers');
 const dCommentsEl = document.getElementById('d-comments');
 const dCommentForm = document.getElementById('d-comment-form');
 const dCommentInput = document.getElementById('d-comment-input');
+const dReplyTarget = document.getElementById('d-reply-target');
+// which top-level comment id (if any) the next post replies to; '' means none
+let replyTo = '';
 
 let userMeta = {};
 async function ensureUserMeta(force) {
@@ -1506,13 +1539,16 @@ function renderSocial(p) {
   dCommentCount.textContent = `${n} COMMENT${n === 1 ? '' : 'S'}`;
   renderLikers(p);
   dCommentsEl.innerHTML = '';
-  p.comments.slice().sort((a, b) => a.created - b.created).forEach(c => {
+  // build one comment row (avatar, name, like, delete, linkified text). `reply`
+  // flags a child so it renders indented; top-level rows also get a REPLY button.
+  const byCreated = (a, b) => a.created - b.created;
+  const buildRow = (c, reply) => {
     const meta = userMeta[c.username] || { username: c.username, displayName: c.username };
     const canDel = me && (me.username === c.username || me.username === p.username || isAdminProfile() || isCommunityAdmin());
     const cLikes = Array.isArray(c.likes) ? c.likes : [];
     const cLiked = !!(me && cLikes.includes(me.username));
     const row = document.createElement('div');
-    row.className = 'comment';
+    row.className = 'comment' + (reply ? ' reply' : '');
     row.innerHTML =
       `<span class="avatar sm">${avatarInner(meta)}</span>` +
       `<div class="c-body"><div class="c-head">` +
@@ -1523,12 +1559,23 @@ function renderSocial(p) {
         (cLikes.length ? `<span class="c-like-count">${cLikes.length}</span>` : '') +
         `</button>` : '') +
       (canDel ? `<button class="c-del" title="Delete comment">✕</button>` : '') +
-      `</div><div class="c-text"></div></div>`;
+      `</div><div class="c-text"></div>` +
+      (me && !reply ? `<button class="mono dim c-reply" type="button">REPLY</button>` : '') +
+      `</div>`;
     linkifyComment(row.querySelector('.c-text'), c.text);
     row.querySelector('.c-name').addEventListener('click', () => { closeProject(); openPeople(c.username); });
     if (me) row.querySelector('.c-like').addEventListener('click', () => likeComment(p, c));
     if (canDel) row.querySelector('.c-del').addEventListener('click', () => deleteComment(p, c.id));
-    dCommentsEl.appendChild(row);
+    const replyBtn = row.querySelector('.c-reply');
+    if (replyBtn) replyBtn.addEventListener('click', () => startReply(c.username, c.id));
+    return row;
+  };
+  // two-level tree: each top-level comment, then its direct replies indented
+  const tops = p.comments.filter(c => !c.parentId).sort(byCreated);
+  tops.forEach(c => {
+    dCommentsEl.appendChild(buildRow(c, false));
+    p.comments.filter(r => r.parentId === c.id).sort(byCreated)
+      .forEach(r => dCommentsEl.appendChild(buildRow(r, true)));
   });
   // if the roster has not loaded yet (e.g. deep-link open), pull it so liker
   // + comment display names/avatars fill in, then re-render if still on this
@@ -1619,7 +1666,8 @@ function renderLikers(p) {
 async function deleteComment(p, cid) {
   try {
     await api.call('DELETE', `/api/photos/${p.postId}/comments/${cid}`);
-    p.comments = p.comments.filter(c => c.id !== cid);
+    // mirror the server cascade: deleting a top-level comment also drops its replies
+    p.comments = p.comments.filter(c => c.id !== cid && c.parentId !== cid);
     syncPostSocial(p);
     renderSocial(p);
   } catch (e) { toast(String(e.message || 'COULD NOT DELETE').toUpperCase()); }
@@ -1682,15 +1730,44 @@ if (dSaveBtn) dSaveBtn.addEventListener('click', async () => {
     toast(String(e.message || 'COULD NOT SAVE').toUpperCase());
   }
 });
+/* start replying to a top-level comment: remember its id, show the chip,
+   prefill "@user " in the input and focus it so the thread stays readable. */
+function startReply(username, cid) {
+  if (!me) return;
+  replyTo = cid;
+  dReplyTarget.hidden = false;
+  dReplyTarget.textContent = '';
+  dReplyTarget.appendChild(document.createTextNode('Replying to @' + username + ' '));
+  const x = document.createElement('span');
+  x.className = 'rc-x';
+  x.textContent = '✕';
+  dReplyTarget.appendChild(x);
+  const tag = '@' + username + ' ';
+  if (!dCommentInput.value.trim()) dCommentInput.value = tag;
+  dCommentInput.focus();
+  const pos = dCommentInput.value.length;
+  dCommentInput.setSelectionRange(pos, pos);
+}
+/* cancel a pending reply and hide the chip (does not clear typed text) */
+function clearReply() {
+  replyTo = '';
+  dReplyTarget.hidden = true;
+  dReplyTarget.textContent = '';
+}
+if (dReplyTarget) dReplyTarget.addEventListener('click', clearReply);
+
 dCommentForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const p = detailProject;
   const text = dCommentInput.value.trim();
   if (!p || !text) return;
+  // only reply when the target is still a top-level comment on this post
+  const parentId = (replyTo && p.comments.some(c => c.id === replyTo && !c.parentId)) ? replyTo : '';
   try {
-    const c = await api.call('POST', `/api/photos/${p.postId}/comments`, { text });
+    const c = await api.call('POST', `/api/photos/${p.postId}/comments`, parentId ? { text, parentId } : { text });
     p.comments.push(c);
     dCommentInput.value = '';
+    clearReply();
     hideMentionMenu();
     if (me && !userMeta[me.username]) userMeta[me.username] = me;
     syncPostSocial(p);
@@ -2363,6 +2440,8 @@ function notifLabel(n) {
   if (n.type === 'comment') return `@${n.actor} commented on ${title}`;
   if (n.type === 'mention') return `@${n.actor} mentioned you on ${title}`;
   if (n.type === 'comment_like') return `@${n.actor} liked your comment on ${title}`;
+  if (n.type === 'reply') return `@${n.actor} replied to your comment on ${title}`;
+  if (n.type === 'spotlight') return `@${n.actor} featured ${title} in the spotlight`;
   return `@${n.actor} on ${title}`;
 }
 
@@ -2371,7 +2450,7 @@ function renderNotifications() {
   notifications.forEach(n => {
     const row = document.createElement('button');
     row.className = 'notif-row' + (n.read ? '' : ' unread');
-    const preview = (n.type === 'comment' || n.type === 'mention' || n.type === 'comment_like') && n.text ? `"${esc(n.text)}" / ` : '';
+    const preview = (n.type === 'comment' || n.type === 'mention' || n.type === 'comment_like' || n.type === 'reply') && n.text ? `"${esc(n.text)}" / ` : '';
     row.innerHTML =
       `<span class="notif-main"><strong>${esc(notifLabel(n))}</strong>` +
       `<small class="mono dim">${preview}${timeAgo(n.created)}</small></span>` +
@@ -2907,6 +2986,8 @@ function renderCommunityRoom() {
   });
   document.getElementById('room-pinned-empty').hidden = pinnedPosts.length > 0;
 
+  renderCommunitySpotlight();
+
   const feed = document.getElementById('room-feed');
   feed.innerHTML = '';
   communityActivity.forEach(ev => {
@@ -2928,6 +3009,33 @@ function renderCommunityRoom() {
   document.getElementById('room-feed-empty').hidden = communityActivity.length > 0;
 
   renderCommunityPulse();
+}
+
+/* the community SPOTLIGHT: one deliberately curated hero photo the owners/admins
+   have chosen. The whole card is a doorway back to the sphere - clicking it
+   opens the photo (cached detail when possible, else spins the sphere), exactly
+   like the pinned tiles. Admins get an inline UNFEATURE control. */
+function renderCommunitySpotlight() {
+  const panel = document.getElementById('room-spotlight');
+  const clearBtn = document.getElementById('room-spotlight-clear');
+  if (!panel) return;
+  const admin = isCommunityAdmin() || isAdminProfile();
+  const spotId = currentCommunity && currentCommunity.spotlightPostId;
+  const post = spotId ? communityPosts.find(p => p.id === spotId) : null;
+  if (!post) { panel.hidden = true; if (clearBtn) clearBtn.hidden = true; return; }
+  panel.hidden = false;
+  panel.style.borderColor = currentCommunity.accent || '';
+  if (clearBtn) clearBtn.hidden = !admin;
+  const onSphere = postOnSphere(post.id);
+  const media = document.getElementById('room-spotlight-media');
+  media.innerHTML =
+    `<img src="${esc(mediaSrc(post.file))}" alt="${esc(post.title || '')}">` +
+    (onSphere ? LOCATE_PIN_HTML : '');
+  document.getElementById('room-spotlight-title').textContent = post.title || 'UNTITLED';
+  document.getElementById('room-spotlight-owner').textContent = '@' + (post.username || 'unknown');
+  const card = document.getElementById('room-spotlight-card');
+  card.onclick = () => openPulsePhoto(post.id);
+  wireLocatePin(card, post.id);
 }
 
 /* build one "doorway back to the sphere" photo tile shared by the recap and
@@ -3003,6 +3111,7 @@ function activityLabel(ev) {
   if (ev.type === 'member.joined') return 'Joined the community';
   if (ev.type === 'prompt.created') return `New prompt: ${ev.title || ''}`;
   if (ev.type === 'photo.pinned') return `Pinned ${ev.title || 'a photo'}`;
+  if (ev.type === 'photo.spotlighted') return `Featured ${ev.title || 'a photo'} in the spotlight`;
   return ev.title || ev.type;
 }
 
@@ -3100,6 +3209,27 @@ function openRecapPhoto(postId) {
   else { clearRouteKind('recap'); focusCardOnSphere(postId); }
 }
 
+/* CORS-enabled image load shared by the share-card renderers so photos on
+   Supabase Storage do not taint the canvas (toBlob would throw SecurityError).
+   Public buckets send ACAO; a broken URL resolves to null so callers fall back
+   to a placeholder instead of aborting the whole card. */
+function loadCors(src) {
+  return new Promise(res => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.decoding = 'async';
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+
+/* filename-safe slug shared by the recap + album-sheet download paths */
+function sanitizeBase(name, fallback) {
+  return String(name || fallback)
+    .replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || fallback;
+}
+
 /* ---- shareable recap card -------------------------------------------------
    Draws the last-loaded recap object to an offscreen portrait canvas in the
    same Space Mono / Inter + coverDraw() aesthetic as the sphere card textures,
@@ -3180,16 +3310,6 @@ async function renderRecapCard(r) {
   const tileGap = 16;
   const tileW = (W - pad * 2 - tileGap * 3) / 4;
   const tileY = mosaicTop + 24, tileH = tileW;
-  // CORS-enabled load so top photos on Supabase Storage do not taint the
-  // canvas (toBlob would throw SecurityError). Public buckets send ACAO.
-  const loadCors = src => new Promise(res => {
-    const im = new Image();
-    im.crossOrigin = 'anonymous';
-    im.decoding = 'async';
-    im.onload = () => res(im);
-    im.onerror = () => res(null);
-    im.src = src;
-  });
   const imgs = await Promise.all(photos.map(tp => loadCors(mediaSrc(tp.file))));
   for (let i = 0; i < 4; i++) {
     const tx = pad + i * (tileW + tileGap);
@@ -3258,16 +3378,8 @@ async function downloadRecapCard() {
     const canvas = await renderRecapCard(lastRecap);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('render failed');
-    const base = String((lastRecap.community && lastRecap.community.name) || (currentCommunity && currentCommunity.name) || 'recap')
-      .replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'recap';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${base}-recap.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const base = sanitizeBase((lastRecap.community && lastRecap.community.name) || (currentCommunity && currentCommunity.name), 'recap');
+    downloadBlob(blob, `${base}-recap.png`);
     toast('SAVING RECAP CARD');
   } catch {
     toast('COULD NOT BUILD CARD');
@@ -3277,6 +3389,183 @@ async function downloadRecapCard() {
     if (shareBtn) shareBtn.disabled = false;
     recapCardBusy = false;
   }
+}
+
+/* ---- shareable album contact sheet ---------------------------------------
+   Draws the currently open album into an offscreen portrait canvas as a tiled
+   contact sheet (cover-style header + a grid of the album's photos) in the same
+   Space Mono / Inter + coverDraw() aesthetic as the recap card. Purely
+   client-side; photos load CORS-enabled so Supabase-hosted images do not taint
+   the canvas before toBlob(). One broken URL falls back to a placeholder cell
+   instead of aborting the sheet. All text is app-generated / trusted fields
+   drawn to canvas, never innerHTML. */
+let albumSheetBusy = false;    // guards against overlapping sheet builds
+async function renderAlbumContactSheet(album, posts) {
+  const W = 1080, H = 1350;               // portrait share-card (4:5)
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const pad = 72;
+
+  // backdrop - flat near-black with a soft top glow, matching the recap card
+  x.fillStyle = '#050505';
+  x.fillRect(0, 0, W, H);
+  const glow = x.createRadialGradient(W / 2, -120, 80, W / 2, 320, 900);
+  glow.addColorStop(0, 'rgba(28,28,28,0.9)');
+  glow.addColorStop(1, 'rgba(5,5,5,0)');
+  x.fillStyle = glow;
+  x.fillRect(0, 0, W, H);
+  x.strokeStyle = '#1f1f1f';
+  x.lineWidth = 2;
+  x.strokeRect(24.5, 24.5, W - 49, H - 49);
+
+  // header - kicker + album name (auto-shrink) + community name + count/owner
+  x.textAlign = 'left';
+  x.textBaseline = 'alphabetic';
+  x.fillStyle = '#8e8e8e';
+  x.font = '700 22px "Space Mono"';
+  x.fillText('SHARED ALBUM', pad, pad + 8);
+
+  const name = String(album.name || 'ALBUM').toUpperCase();
+  x.fillStyle = '#ffffff';
+  let nameSize = 84;
+  x.font = `600 ${nameSize}px Inter`;
+  while (x.measureText(name).width > W - pad * 2 && nameSize > 40) {
+    nameSize -= 4;
+    x.font = `600 ${nameSize}px Inter`;
+  }
+  x.fillText(name, pad, pad + 104);
+
+  const community = String((currentCommunity && currentCommunity.name) || 'OUR SPHERE').toUpperCase();
+  x.fillStyle = '#9a9a9a';
+  x.font = '400 24px "Space Mono"';
+  x.fillText(community, pad, pad + 148);
+
+  const total = posts.length;
+  const sub = `@${album.owner || 'someone'} / ${total} PHOTO${total === 1 ? '' : 'S'}`.toUpperCase();
+  x.fillStyle = '#7a7a7a';
+  x.font = '400 22px "Space Mono"';
+  x.fillText(sub, pad, pad + 184);
+
+  // photo grid - up to 12 covers, 3 columns, rounded cells with a thin frame.
+  // cellH is fitted to the remaining vertical space (not forced square) so the
+  // full-height 4-row case (10-12 photos) still clears the footer instead of
+  // spilling past the bottom edge; coverDraw center-crops non-square cells.
+  const shown = posts.slice(0, 12);
+  const cols = 3;
+  const cellGap = 16;
+  const gridTop = pad + 224;
+  const cellW = (W - pad * 2 - cellGap * (cols - 1)) / cols;
+  const rows = Math.ceil(shown.length / cols);
+  const footerReserve = 70;                         // room for footer + '+N more' note
+  const gridBottomMax = H - pad - footerReserve;
+  const availH = gridBottomMax - gridTop - cellGap * (rows - 1);
+  const cellH = Math.min(cellW, availH / rows);
+  const imgs = await Promise.all(shown.map(p => loadCors(mediaSrc(p.file))));
+  shown.forEach((p, i) => {
+    const cx = pad + (i % cols) * (cellW + cellGap);
+    const cy = gridTop + Math.floor(i / cols) * (cellH + cellGap);
+    x.save();
+    x.beginPath();
+    x.roundRect(cx, cy, cellW, cellH, 8);
+    x.clip();
+    x.fillStyle = '#141414';
+    x.fillRect(cx, cy, cellW, cellH);
+    const img = imgs[i];
+    if (img) coverDraw(x, img, { x: cx, y: cy, w: cellW, h: cellH });
+    else {
+      // placeholder for a photo that failed to load - a broken URL cannot abort.
+      // textAlign is restored by the enclosing x.restore(), so no manual reset.
+      x.fillStyle = '#5a5a5a';
+      x.font = '400 20px "Space Mono"';
+      x.textAlign = 'center';
+      x.fillText('?', cx + cellW / 2, cy + cellH / 2 + 8);
+    }
+    x.restore();
+    x.strokeStyle = 'rgba(255,255,255,0.10)';
+    x.lineWidth = 1;
+    x.beginPath();
+    x.roundRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1, 8);
+    x.stroke();
+  });
+
+  // footer - brand line, matching the recap card + detail footer
+  x.fillStyle = '#6a6a6a';
+  x.font = '400 20px "Space Mono"';
+  if (total > shown.length) {
+    x.fillText(`+ ${total - shown.length} MORE IN THIS ALBUM`.toUpperCase(), pad, H - pad + 8 - 28);
+  }
+  x.fillText('CHICKEN BUTT GALLERY - A PRIVATE MEMORY SPHERE', pad, H - pad + 8);
+
+  return c;
+}
+
+/* build the sheet, toggling the busy UI; returns { blob, base } or null */
+async function buildAlbumSheet() {
+  if (albumSheetBusy) return null;
+  if (!viewingAlbum || !viewingAlbum.posts || !viewingAlbum.posts.length) {
+    toast('NO PHOTOS TO SAVE YET');
+    return null;
+  }
+  albumSheetBusy = true;
+  const buildingEl = document.getElementById('album-sheet-building');
+  const btn = document.getElementById('album-contact-sheet');
+  if (buildingEl) buildingEl.hidden = false;
+  if (btn) btn.disabled = true;
+  try {
+    const canvas = await renderAlbumContactSheet(viewingAlbum.album, viewingAlbum.posts);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('render failed');
+    return { blob, base: sanitizeBase(viewingAlbum.album && viewingAlbum.album.name, 'album') };
+  } catch {
+    toast('COULD NOT BUILD SHEET');
+    return null;
+  } finally {
+    if (buildingEl) buildingEl.hidden = true;
+    if (btn) btn.disabled = false;
+    albumSheetBusy = false;
+  }
+}
+
+/* trigger a download of a blob under `filename` via an object URL */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* download the currently open album as a contact-sheet PNG */
+async function downloadAlbumSheet() {
+  const built = await buildAlbumSheet();
+  if (!built) return;
+  downloadBlob(built.blob, `${built.base}-sheet.png`);
+  toast('SAVING ALBUM SHEET');
+}
+
+/* share the sheet via the Web Share API when available (with a file), else
+   fall back to a plain download; guarded so a cancel/failure never leaves a
+   dangling toast. */
+async function shareAlbumSheet() {
+  const built = await buildAlbumSheet();
+  if (!built) return;
+  const file = new File([built.blob], `${built.base}-sheet.png`, { type: 'image/png' });
+  const title = String((viewingAlbum && viewingAlbum.album && viewingAlbum.album.name) || 'Album');
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title, text: `${title} - a shared album` });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;  // user dismissed the share sheet
+      // any other failure: fall through to a download so the keepsake is not lost
+    }
+  }
+  downloadBlob(built.blob, `${built.base}-sheet.png`);
+  toast('SAVING ALBUM SHEET');
 }
 
 let csCoverData;
@@ -3794,6 +4083,9 @@ async function showAlbum(id, updateHash = true) {
   document.getElementById('album-desc').textContent = a.description || '';
   const own = me && (me.username === a.owner || isAdminProfile() || isCommunityAdmin());
   document.getElementById('album-actions').hidden = !own;
+  // the contact sheet needs at least one photo; hide the action for empty albums
+  document.getElementById('album-contact-sheet').hidden = data.posts.length === 0;
+  document.getElementById('album-sheet-building').hidden = true;
   renderAlbumPhotos(data, own);
 }
 
@@ -4607,7 +4899,7 @@ document.getElementById('d-download').addEventListener('click', () => {
   if (!url) return;
   const extMatch = /\.(jpe?g|png|webp|gif)(?:[?#]|$)/i.exec(url);
   const ext = extMatch ? extMatch[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
-  const name = (p.title || 'photo').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'photo';
+  const name = sanitizeBase(p.title, 'photo');
   try {
     const a = document.createElement('a');
     a.href = url;
@@ -4626,6 +4918,11 @@ document.getElementById('profile-share').addEventListener('click', () => {
 });
 document.getElementById('album-share').addEventListener('click', () => {
   if (viewingAlbum) copyRoute(albumRoute(viewingAlbum.album.id));
+});
+document.getElementById('album-contact-sheet').addEventListener('click', () => {
+  // share the whole album as one image when the platform supports it, else download
+  if (navigator.share) shareAlbumSheet();
+  else downloadAlbumSheet();
 });
 
 /* ============================================================
