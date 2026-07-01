@@ -14,6 +14,7 @@ const {
   savedPostIds, toggleSaved,
   saveDataUrlImage, safeUnlinkAsset, saveImage, deleteImage, addAudit, addNotification, publicNotification,
   memberList, publicPrompt, activityFeed, communityRecap, communityPulse, communityPlaces,
+  computeMilestones,
 } = require('./lib/helpers');
 
 // the fixed reaction allow-list. 'heart' is the legacy like; the rest are extra.
@@ -319,6 +320,15 @@ async function handleApi(req, res, pathname, params) {
       if (!c) return send(res, 404, { error: 'No such community.' });
       if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
       return send(res, 200, communityPulse(c));
+    }
+
+    if (req.method === 'GET' && seg[1] === 'communities' && seg[2] && seg[3] === 'milestones') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const c = findCommunity(seg[2]);
+      if (!c) return send(res, 404, { error: 'No such community.' });
+      if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
+      return send(res, 200, computeMilestones(c));
     }
 
     if (req.method === 'GET' && seg[1] === 'communities' && seg[2] && seg[3] === 'places') {

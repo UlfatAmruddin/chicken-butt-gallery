@@ -3,7 +3,111 @@
    here so the public landing stays untinted and nothing depends on JS running. */
 :root {
   --community-glow: rgba(154,154,154,0.10);
+
+  /* ---- theme tokens ----
+     defaults reproduce the signature dark chrome exactly, so nothing changes
+     visually until body[data-theme='light'] is set. only the HUD panels /
+     modals / overlays reference these; the 3D scene + vignette stay dark in
+     both themes so the sphere remains the hero. */
+  --surface: rgba(16,16,16,0.96);   /* HUD panels (settings / filter / notifications) */
+  --surface-2: #0e0e0e;             /* modal / overlay boxes */
+  --text: #fff;                     /* primary text on chrome */
+  --text-dim: #8d8d8d;              /* dimmed labels / .mono headers */
+  --border: #262626;                /* hairline panel borders */
+  --panel-bg: #141414;              /* rows inside panels (notif / activity) */
+  --overlay-bg: #050505;            /* full-screen page overlays (detail/people/albums) */
 }
+
+/* light theme: a softer daytime surface for the chrome while the sphere behind
+   it stays dark. legible palette, gentle contrast, same layout + motion. */
+body[data-theme='light'] {
+  --surface: rgba(244,244,246,0.94);
+  --surface-2: #f5f5f7;
+  --text: #14141a;
+  --text-dim: #6a6a72;
+  --border: #d8d8de;
+  --panel-bg: #ececf0;
+  --overlay-bg: #f2f2f5;
+}
+
+/* light-theme legibility fixes for text that is hardcoded light-grey / white in
+   the dark default. scoped strictly to the light chrome surfaces (settings /
+   filter / notifications panels, modals, and the full-screen overlay pages) so
+   the dark-sphere HUD floating over the scene keeps its light text untouched.
+   only touches light mode - the dark default stays byte-for-byte identical. */
+body[data-theme='light'] #settings-panel .sp-label,
+body[data-theme='light'] #settings-panel .sp-seg button,
+body[data-theme='light'] #filter-panel .fp-tag,
+body[data-theme='light'] .modal-box,
+body[data-theme='light'] .modal-copy,
+body[data-theme='light'] #detail,
+body[data-theme='light'] #people,
+body[data-theme='light'] #albums,
+body[data-theme='light'] #flat-view,
+body[data-theme='light'] #atlas,
+body[data-theme='light'] #community-room,
+body[data-theme='light'] #community-admin,
+body[data-theme='light'] #recap-overlay { color: var(--text); }
+
+/* remap the shared light-grey helper text classes to legible tones, but ONLY
+   inside the light overlay pages / panels (never the dark-sphere HUD). */
+body[data-theme='light'] #detail .mono,
+body[data-theme='light'] #people .mono,
+body[data-theme='light'] #albums .mono,
+body[data-theme='light'] #flat-view .mono,
+body[data-theme='light'] #atlas .mono,
+body[data-theme='light'] #community-room .mono,
+body[data-theme='light'] #community-admin .mono,
+body[data-theme='light'] #recap-overlay .mono,
+body[data-theme='light'] .modal-box .mono,
+body[data-theme='light'] #settings-panel .mono,
+body[data-theme='light'] #filter-panel .mono,
+body[data-theme='light'] #notifications-panel .mono { color: var(--text-dim); }
+body[data-theme='light'] #detail .dim,
+body[data-theme='light'] #people .dim,
+body[data-theme='light'] #albums .dim,
+body[data-theme='light'] #flat-view .dim,
+body[data-theme='light'] #atlas .dim,
+body[data-theme='light'] #community-room .dim,
+body[data-theme='light'] #community-admin .dim,
+body[data-theme='light'] #recap-overlay .dim,
+body[data-theme='light'] .modal-box .dim { color: var(--text-dim); }
+
+/* headings / body copy that are hardcoded #fff or light-grey on the light pages */
+body[data-theme='light'] .people-title,
+body[data-theme='light'] #d-title,
+body[data-theme='light'] .room-hero h1,
+body[data-theme='light'] .recap-hero h1,
+body[data-theme='light'] .album-id h2,
+body[data-theme='light'] .profile-id h2,
+body[data-theme='light'] .d-meta,
+body[data-theme='light'] .d-cols p,
+body[data-theme='light'] #room-desc,
+body[data-theme='light'] .modal-box h2 { color: var(--text); }
+
+/* panel row surfaces on the light pages (activity / admin / picker rows) */
+body[data-theme='light'] .activity-row,
+body[data-theme='light'] .admin-row,
+body[data-theme='light'] .pick-album-row,
+body[data-theme='light'] .notif-row {
+  background: var(--panel-bg); border-color: var(--border); color: var(--text);
+}
+body[data-theme='light'] .activity-row strong,
+body[data-theme='light'] .admin-row strong { color: var(--text); }
+
+/* form fields adopt the light surface so typed text stays legible */
+body[data-theme='light'] input,
+body[data-theme='light'] textarea,
+body[data-theme='light'] select {
+  background: var(--surface-2); color: var(--text); border-color: var(--border);
+}
+body[data-theme='light'] .search { background: var(--surface-2); }
+
+/* focus rings read as dark on the light surface */
+body[data-theme='light'] button:focus-visible,
+body[data-theme='light'] input:focus-visible,
+body[data-theme='light'] textarea:focus-visible,
+body[data-theme='light'] select:focus-visible { outline-color: #14141a; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -151,16 +255,33 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 #settings-panel {
   position: fixed; bottom: 142px; left: 22px; z-index: 11;
   width: 248px;
-  background: rgba(16,16,16,0.96);
+  background: var(--surface);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  border: 1px solid #262626; border-radius: 16px;
+  border: 1px solid var(--border); border-radius: 16px;
   padding: 18px;
 }
-.sp-head { color: #8d8d8d; letter-spacing: .1em; margin-bottom: 18px; }
+.sp-head { color: var(--text-dim); letter-spacing: .1em; margin-bottom: 18px; }
 .sp-row { margin-bottom: 20px; }
 .sp-row:last-child { margin-bottom: 4px; }
 .sp-label { display: flex; justify-content: space-between; align-items: baseline; color: #cfcfcf; margin-bottom: 10px; }
-.sp-label span:last-child { color: #fff; font-size: 13px; }
+.sp-label span:last-child { color: var(--text); font-size: 13px; }
+
+/* segmented DARK / LIGHT theme toggle inside the settings panel */
+.sp-seg { display: flex; gap: 6px; }
+.sp-seg button {
+  flex: 1;
+  font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .06em;
+  color: #c9c9c9; padding: 9px 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  transition: border-color .2s, background .2s, color .2s, transform .15s;
+}
+.sp-seg button:hover { border-color: #777; }
+.sp-seg button:active { transform: scale(0.96); }
+.sp-seg button.active { background: var(--text); color: var(--surface-2); border-color: var(--text); }
+/* light mode: the panel-id base override (color: var(--text)) outranks the
+   classless active rule above, so re-assert the active text color at matching
+   specificity or the selected toggle reads dark-on-dark. */
+body[data-theme='light'] #settings-panel .sp-seg button.active { color: var(--surface-2); }
 .sp-ticks { display: flex; justify-content: space-between; color: #5d5d5d; font-size: 9px; margin-top: 6px; }
 #settings-panel input[type="range"] {
   -webkit-appearance: none; appearance: none;
@@ -211,22 +332,29 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 #filter-panel {
   position: fixed; bottom: 122px; right: 22px; z-index: 11;
   width: 290px;
-  background: rgba(16,16,16,0.96);
-  border: 1px solid #262626;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 18px;
 }
-.fp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: #8d8d8d; }
-#fp-clear { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.fp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: var(--text-dim); }
+#fp-clear { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .fp-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .fp-tag {
   font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .05em;
   color: #c9c9c9; padding: 8px 11px;
-  border: 1px solid #3c3c3c; border-radius: 6px;
+  border: 1px solid var(--border); border-radius: 6px;
   transition: all .2s;
 }
 .fp-tag:hover { border-color: #777; }
 .fp-tag.active { background: #fff; color: #000; border-color: #fff; }
+/* light-mode active chip: mirror the .sp-seg active pattern so the selected
+   filter stays high-contrast on the light --surface panel (a near-white chip
+   on a light panel would read as barely selected). */
+body[data-theme='light'] #filter-panel .fp-tag.active {
+  background: var(--text); color: var(--surface-2); border-color: var(--text);
+}
 
 /* ---------- public/private entry ---------- */
 .entry-screen {
@@ -335,7 +463,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* ---------- detail page ---------- */
 #detail {
   position: fixed; inset: 0; z-index: 70;
-  background: #050505;
+  background: var(--overlay-bg);
   display: none;
   overflow-y: auto;
 }
@@ -413,6 +541,54 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .d-hero:hover .zoom-hint { opacity: 1; }
 .d-hero.zoomed .zoom-hint { opacity: 0; }
+
+/* ---- detail filmstrip: quick-jump thumbnails under the hero ---- */
+.d-filmstrip {
+  display: flex; gap: 8px; align-items: stretch;
+  margin: -28px 0 8px; padding: 4px 2px 10px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: thin; scrollbar-color: #3a3a3a transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.d-filmstrip[hidden] { display: none; }
+.d-filmstrip::-webkit-scrollbar { height: 6px; }
+.d-filmstrip::-webkit-scrollbar-track { background: transparent; }
+.d-filmstrip::-webkit-scrollbar-thumb { background: #2c2c2c; border-radius: 999px; }
+.d-filmstrip::-webkit-scrollbar-thumb:hover { background: #454545; }
+.fs-thumb {
+  position: relative; flex: 0 0 auto;
+  width: 68px; height: 46px; padding: 0;
+  border: 1px solid #242424; border-radius: 7px;
+  background: #0d0d0d; overflow: hidden; cursor: pointer;
+  opacity: .62; transition: opacity .2s ease, transform .2s ease, border-color .2s ease;
+}
+.fs-thumb img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  -webkit-user-drag: none; user-select: none;
+}
+.fs-thumb .fs-num {
+  position: absolute; left: 4px; bottom: 3px;
+  font-size: 9px; letter-spacing: .06em; line-height: 1;
+  color: #cfcfcf; background: rgba(0,0,0,.6);
+  padding: 2px 4px; border-radius: 4px;
+  opacity: 0; transition: opacity .2s ease;
+}
+.fs-thumb:hover { opacity: 1; transform: translateY(-2px); border-color: #6a6a6a; }
+.fs-thumb:hover .fs-num { opacity: 1; }
+.fs-thumb:focus-visible { outline: 2px solid #fff; outline-offset: 2px; opacity: 1; }
+.fs-thumb.active {
+  opacity: 1; border-color: #fff;
+  box-shadow: 0 0 0 1px #fff, 0 4px 14px rgba(0,0,0,.5);
+}
+.fs-thumb.active .fs-num { opacity: 1; color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .d-filmstrip { scroll-behavior: auto; }
+  .fs-thumb, .fs-thumb:hover { transition: none; transform: none; }
+}
+@media (max-width: 560px) {
+  .d-filmstrip { display: none; }
+}
 
 .d-cols {
   display: grid; grid-template-columns: 1fr 1fr; gap: 52px;
@@ -672,23 +848,23 @@ textarea { resize: vertical; }
 #notifications-panel {
   position: fixed; top: 76px; right: 22px; z-index: 11;
   width: 340px; max-width: calc(100vw - 44px);
-  background: rgba(16,16,16,0.96);
+  background: var(--surface);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  border: 1px solid #262626; border-radius: 16px;
+  border: 1px solid var(--border); border-radius: 16px;
   padding: 18px;
 }
 .np-head {
   display: flex; justify-content: space-between; align-items: center;
-  color: #8d8d8d; letter-spacing: .1em; margin-bottom: 14px;
+  color: var(--text-dim); letter-spacing: .1em; margin-bottom: 14px;
 }
 .np-head button { color: #cfcfcf; text-decoration: underline; text-underline-offset: 3px; }
-.np-head button:hover { color: #fff; }
+.np-head button:hover { color: var(--text); }
 .notif-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
 .notif-row {
   display: flex; align-items: center; gap: 12px; text-align: left;
   width: 100%;
-  background: #141414;
-  border: 1px solid #262626;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
   color: #ddd;
@@ -696,7 +872,7 @@ textarea { resize: vertical; }
 }
 .notif-row:hover { border-color: #6a6a6a; }
 .notif-row .notif-main { min-width: 0; flex: 1; overflow: hidden; }
-.notif-row strong { display: block; color: #fff; font-weight: 500; }
+.notif-row strong { display: block; color: var(--text); font-weight: 500; }
 .notif-row small { display: block; margin-top: 4px; }
 .notif-row.unread { border-color: #4a4a4a; background: #191919; }
 .notif-unread-dot {
@@ -713,11 +889,11 @@ textarea { resize: vertical; }
 }
 .modal-box {
   width: 420px; max-width: 90vw;
-  background: #0e0e0e; border: 1px solid #262626; border-radius: 18px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 18px;
   padding: 22px;
 }
-.modal-head { display: flex; justify-content: space-between; align-items: center; color: #8d8d8d; margin-bottom: 16px; }
-.modal-head button { color: #fff; font-size: 14px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-dim); margin-bottom: 16px; }
+.modal-head button { color: var(--text); font-size: 14px; }
 #drop-zone {
   display: flex; align-items: center; justify-content: center;
   height: 92px; border: 1px dashed #3c3c3c; border-radius: 10px;
@@ -790,7 +966,7 @@ textarea { resize: vertical; }
 /* ---------- people / profiles ---------- */
 #people {
   position: fixed; inset: 0; z-index: 60;
-  background: #050505;
+  background: var(--overlay-bg);
   display: none;
   overflow-y: auto;
 }
@@ -890,7 +1066,7 @@ textarea { resize: vertical; }
 /* ---------- albums ---------- */
 #albums {
   position: fixed; inset: 0; z-index: 60;
-  background: #050505; display: none; overflow-y: auto;
+  background: var(--overlay-bg); display: none; overflow-y: auto;
 }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
 .section-head .people-title { margin-bottom: 24px; }
@@ -1124,7 +1300,7 @@ textarea { resize: vertical; }
 /* ---------- flat grid / list view ---------- */
 #flat-view {
   position: fixed; inset: 0; z-index: 60;
-  background: #050505; display: none; overflow-y: auto;
+  background: var(--overlay-bg); display: none; overflow-y: auto;
 }
 .flat-toggle { display: flex; gap: 8px; }
 .flat-toggle .circle-btn { width: 42px; height: 42px; position: static; }
@@ -1153,7 +1329,7 @@ textarea { resize: vertical; }
 /* ---------- places atlas ---------- */
 #atlas {
   position: fixed; inset: 0; z-index: 60;
-  background: #050505; display: none; overflow-y: auto;
+  background: var(--overlay-bg); display: none; overflow-y: auto;
 }
 #atlas-sub { letter-spacing: .14em; font-size: 12px; margin: -18px 0 26px; }
 .atlas-grid {
@@ -1197,7 +1373,7 @@ textarea { resize: vertical; }
 /* ---------- community room / admin ---------- */
 #community-room, #community-admin, #recap-overlay {
   position: fixed; inset: 0; z-index: 60;
-  background: #050505; display: none; overflow-y: auto;
+  background: var(--overlay-bg); display: none; overflow-y: auto;
 }
 #recap-close {
   color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px;
@@ -1370,6 +1546,32 @@ textarea { resize: vertical; }
 .pulse-chip .pc-count { font-size: 13px; color: #d8d8d8; }
 .pulse-chip.zero .pc-count { color: #8a8a8a; }
 .pulse-strip:empty { display: none; }
+
+/* ---- community milestones (shared momentum badges) ---- */
+.milestone-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;
+}
+.milestone-badge {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 14px; border-radius: 12px;
+  background: #101010; border: 1px solid #242424;
+}
+.milestone-badge.locked { opacity: .62; }
+.milestone-badge.achieved { background: #121212; }
+.milestone-badge .ms-icon { font-size: 18px; line-height: 1; color: #6a6a6a; }
+.milestone-badge .ms-label {
+  font-size: 13px; letter-spacing: .1em; color: #fff;
+}
+.milestone-badge.locked .ms-label { color: #cfcfcf; }
+.milestone-badge .ms-detail { font-size: 11px; line-height: 1.35; letter-spacing: .02em; }
+.milestone-badge .ms-progress {
+  display: block; height: 3px; border-radius: 999px;
+  background: #242424; overflow: hidden; margin-top: 2px;
+}
+.milestone-badge .ms-progress-fill {
+  display: block; height: 100%; border-radius: 999px;
+  background: #6a6a6a; transition: width .3s ease;
+}
 
 /* ---- "find on sphere" overlay pin (flat cards + room pinned tiles) ---- */
 .locate-pin {

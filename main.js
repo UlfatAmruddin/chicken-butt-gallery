@@ -16,6 +16,7 @@ let communityPosts = [];     // posts fetched from the server
 let pool = [];               // community posts -> what the wall shows
 let communityActivity = [];
 let communityPulse = null;
+let communityMilestones = null;
 let communityPrompts = [];
 let savedIds = new Set();     // postIds the logged-in user has privately saved here
 
@@ -2910,6 +2911,8 @@ async function loadCommunityExtras() {
   catch { communityActivity = []; }
   try { communityPulse = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/pulse`); }
   catch { communityPulse = null; }
+  try { communityMilestones = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/milestones`); }
+  catch { communityMilestones = null; }
 }
 
 async function refreshCurrentCommunity() {
@@ -3009,6 +3012,7 @@ function renderCommunityRoom() {
   document.getElementById('room-feed-empty').hidden = communityActivity.length > 0;
 
   renderCommunityPulse();
+  renderCommunityMilestones();
 }
 
 /* the community SPOTLIGHT: one deliberately curated hero photo the owners/admins
@@ -3094,6 +3098,34 @@ function renderCommunityPulse() {
 
   const hasPulse = reactions.some(r => r.count) || topPhotos.length > 0;
   emptyEl.hidden = hasPulse;
+}
+
+/* the community MILESTONES board: server-computed badges celebrating shared
+   progress (photo tiers, everyone contributed, most-loved memory, current
+   posting streak). Every field is server-derived text or a fixed glyph, but we
+   still esc() all of it. Achieved badges get an accent-tinted ring; locked ones
+   are dimmed with a thin progress hint toward the next tier. */
+function renderCommunityMilestones() {
+  const grid = document.getElementById('room-milestone-grid');
+  const emptyEl = document.getElementById('room-milestone-empty');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const badges = (communityMilestones && Array.isArray(communityMilestones.badges)) ? communityMilestones.badges : [];
+  const accent = (currentCommunity && currentCommunity.accent) || '#fff';
+  badges.forEach(b => {
+    const achieved = !!b.achieved;
+    const pct = Math.max(0, Math.min(1, Number(b.progress) || 0));
+    const card = document.createElement('div');
+    card.className = 'milestone-badge' + (achieved ? ' achieved' : ' locked');
+    if (achieved) card.style.borderColor = accent;
+    card.innerHTML =
+      `<span class="ms-icon" ${achieved ? `style="color:${esc(accent)}"` : ''}>${esc(b.icon || '◇')}</span>` +
+      `<span class="ms-label mono">${esc(b.label || '')}</span>` +
+      `<span class="ms-detail mono dim">${esc(b.detail || '')}</span>` +
+      (achieved ? '' : `<span class="ms-progress"><span class="ms-progress-fill" style="width:${(pct * 100).toFixed(0)}%;background:${esc(accent)}"></span></span>`);
+    grid.appendChild(card);
+  });
+  emptyEl.hidden = badges.length > 0;
 }
 
 /* a pulse photo tile is a doorway back into the sphere: prefer the local
@@ -4934,7 +4966,21 @@ const dprSlider = document.getElementById('set-dpr');
 const dprVal = document.getElementById('set-dpr-val');
 const fpsSlider = document.getElementById('set-fps');
 const fpsVal = document.getElementById('set-fps-val');
+const themeDarkBtn = document.getElementById('theme-dark');
+const themeLightBtn = document.getElementById('theme-light');
 let settingsOpen = false;
+
+// light / dark theme: only the chrome (HUD panels, modals, overlay pages)
+// recolors via CSS tokens - the 3D scene + vignette stay dark in both themes.
+function applyTheme(name) {
+  const isLight = name === 'light';
+  if (isLight) document.body.dataset.theme = 'light';
+  else delete document.body.dataset.theme;   // dark is the tokenless default
+  themeDarkBtn.classList.toggle('active', !isLight);
+  themeLightBtn.classList.toggle('active', isLight);
+  themeDarkBtn.setAttribute('aria-pressed', String(!isLight));
+  themeLightBtn.setAttribute('aria-pressed', String(isLight));
+}
 
 function applyDpr(v) {
   LOW_POWER.maxDpr = v;
@@ -4959,6 +5005,9 @@ function applyFps(v) {
   fpsSlider.value = String(fps0);
   applyDpr(dpr0);
   applyFps(fps0);
+
+  const savedTheme = localStorage.getItem('pg_theme');
+  applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 }
 
 dprSlider.addEventListener('input', () => {
@@ -4970,6 +5019,14 @@ fpsSlider.addEventListener('input', () => {
   const v = parseInt(fpsSlider.value, 10);
   applyFps(v);
   localStorage.setItem('pg_render_fps', String(v));
+});
+themeDarkBtn.addEventListener('click', () => {
+  applyTheme('dark');
+  localStorage.setItem('pg_theme', 'dark');
+});
+themeLightBtn.addEventListener('click', () => {
+  applyTheme('light');
+  localStorage.setItem('pg_theme', 'light');
 });
 
 function toggleSettings() {

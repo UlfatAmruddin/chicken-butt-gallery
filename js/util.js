@@ -42,3 +42,35 @@ export function coverDraw(ctx, img, r) {
   const sw = r.w / s, sh = r.h / s;
   ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, r.x, r.y, r.w, r.h);
 }
+
+/* render a horizontal thumbnail filmstrip into `container` from an ordered
+   `items` list, marking item #activeIndex active and scrolling it into view.
+   Each item may carry {heroSrc|src, title}. Clicking a thumb calls onPick(i).
+   DOM-only and dependency-free so any caller can drive it from ordered nav. */
+export function buildFilmstrip(container, items, activeIndex, { onPick } = {}) {
+  if (!container) return;
+  container.innerHTML = '';
+  if (!Array.isArray(items) || items.length <= 1) { container.hidden = true; return; }
+  container.hidden = false;
+  const frag = document.createDocumentFragment();
+  let activeBtn = null;
+  items.forEach((item, i) => {
+    const src = (item && (item.heroSrc || item.src)) || '';
+    const title = (item && item.title) || '';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fs-thumb' + (i === activeIndex ? ' active' : '');
+    btn.dataset.index = String(i);
+    if (i === activeIndex) btn.setAttribute('aria-current', 'true');
+    btn.title = title;
+    btn.setAttribute('aria-label', title ? 'Jump to ' + title : 'Jump to photo ' + (i + 1));
+    btn.innerHTML = `<img src="${esc(mediaSrc(src))}" alt="" loading="lazy" draggable="false"><span class="fs-num mono">${i + 1}</span>`;
+    if (typeof onPick === 'function') btn.addEventListener('click', () => onPick(i));
+    if (i === activeIndex) activeBtn = btn;
+    frag.appendChild(btn);
+  });
+  container.appendChild(frag);
+  if (activeBtn && activeBtn.scrollIntoView) {
+    activeBtn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
+  }
+}
