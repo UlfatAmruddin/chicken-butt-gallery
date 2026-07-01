@@ -899,10 +899,25 @@ textarea { resize: vertical; }
    or the community name changes. */
 #hud-chips {
   position: fixed; top: 34px; left: 88px; z-index: 10;
-  display: flex; align-items: center; gap: 18px;
+  display: flex; align-items: center; gap: 10px;
   max-width: calc(100vw - 120px);
 }
-#hud-chips > * { flex: none; }   /* chips keep their label width; no shrink */
+/* render each chip as a real HUD button: a dark rounded pill that reads as a
+   pressable control over the sphere, not floating text. */
+#hud-chips > * {
+  flex: none;
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid #333;
+  background: rgba(20,20,20,0.82);
+  color: #cfcfcf;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: .03em;
+  transition: border-color .2s, background .2s, color .2s, transform .12s;
+}
+#hud-chips > *:hover { border-color: #6f6f6f; background: rgba(38,38,38,0.9); color: #fff; }
+#hud-chips > *:active { transform: scale(0.96); }
 #community-chip {
   color: #fff;
   flex: 0 1 auto; min-width: 0; max-width: 220px;   /* only the name may ellipsis */
@@ -923,9 +938,11 @@ textarea { resize: vertical; }
   transition: color .2s ease;
 }
 #poster-chip::before { content: "\25A6\00A0"; color: #7fdcff; }   /* small tiled-grid mark */
-#poster-chip:disabled { color: #6f6f6f; cursor: default; }
-/* poster build indicator - a faint HUD note that flows after the chips */
+#poster-chip:disabled { color: #6f6f6f; background: rgba(16,16,16,0.6); border-color: #262626; cursor: default; }
+#poster-chip:disabled:hover { color: #6f6f6f; background: rgba(16,16,16,0.6); border-color: #262626; }
+/* poster build indicator - a faint HUD note, plain text (not a button) */
 #poster-building {
+  border: none; background: none; padding: 0;
   color: #8e8e8e; white-space: nowrap;
 }
 #surprise-chip {
