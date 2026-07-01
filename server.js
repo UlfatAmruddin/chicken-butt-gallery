@@ -11,6 +11,7 @@ const {
   requestCommunityId, joinedCommunities, resolveCommunityForAuth, requireAuth, requireCommunity,
   scopedPosts, scopedAlbums, userPhotoCount, publicProfile, albumCoverFile, publicAlbum,
   communityCoverFile, publicCommunity, canManagePost, assertSameCommunityPhoto,
+  savedPostIds, toggleSaved,
   saveDataUrlImage, safeUnlinkAsset, saveImage, deleteImage, addAudit, addNotification, publicNotification,
   memberList, publicPrompt, activityFeed,
 } = require('./lib/helpers');
@@ -505,6 +506,35 @@ async function handleApi(req, res, pathname, params) {
       return send(res, 200, { count: post.likes.length, liked: i < 0 });
     }
 
+    /* ---------------- private "saved" tray (per user, per community) ---------------- */
+    // toggle: POST saves, DELETE unsaves. Kept on the user record so it stays private.
+    if ((req.method === 'POST' || req.method === 'DELETE') && seg[1] === 'photos' && seg[2] && seg[3] === 'save') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const post = posts.find(p => p.id === seg[2]);
+      if (!post) return send(res, 404, { error: 'No such photo.' });
+      const c = findCommunity(post.communityId);
+      if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
+      if (!assertSameCommunityPhoto(post.id, post.communityId)) return send(res, 404, { error: 'No such photo.' });
+      const already = savedPostIds(auth.user, post.communityId).includes(post.id);
+      // POST idempotently saves, DELETE idempotently unsaves; only write when it changes
+      const want = req.method === 'POST';
+      if (want !== already) { toggleSaved(auth.user, post.communityId, post.id); saveJSON('users.json', users); }
+      return send(res, 200, { saved: want });
+    }
+
+    if (req.method === 'GET' && pathname === '/api/saved') {
+      const ctx = requireCommunity(req, res, params);
+      if (!ctx) return;
+      // the caller's saved posts, in save order, filtered to photos still present
+      // in this community. ids and posts stay in lockstep (both live-only).
+      const byId = new Map(scopedPosts(ctx.community.id).map(p => [p.id, p]));
+      const list = savedPostIds(ctx.auth.user, ctx.community.id)
+        .map(id => byId.get(id))
+        .filter(Boolean);
+      return send(res, 200, { ids: list.map(p => p.id), posts: list });
+    }
+
     if (req.method === 'POST' && seg[1] === 'photos' && seg[2] && seg[3] === 'comments' && !seg[4]) {
       const auth = requireAuth(req, res);
       if (!auth) return;
@@ -595,6 +625,18 @@ async function handleApi(req, res, pathname, params) {
         }
       });
       if (albumsChanged) saveJSON('albums.json', albums);
+      // drop the deleted photo from every member's private saved tray
+      let usersChanged = false;
+      Object.values(users).forEach(u => {
+        const list = u.saved && u.saved[post.communityId];
+        if (!Array.isArray(list)) return;
+        const next = list.filter(id => id !== photoId);
+        if (next.length !== list.length) {
+          if (next.length) u.saved[post.communityId] = next; else delete u.saved[post.communityId];
+          usersChanged = true;
+        }
+      });
+      if (usersChanged) saveJSON('users.json', users);
       addAudit(post.communityId, auth.user.username, 'photo.deleted', photoId, { title: post.title });
       return send(res, 200, { ok: true });
     }

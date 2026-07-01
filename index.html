@@ -159,6 +159,7 @@
   <span class="pill-bg"></span>
   <button class="active" data-view="gallery">Gallery</button>
   <button data-view="albums">Albums</button>
+  <button data-view="saved">Saved</button>
   <button data-view="people">People</button>
 </nav>
 
@@ -218,10 +219,22 @@
     <section id="d-social" class="d-social" hidden>
       <div class="d-react">
         <button id="d-like" class="like-btn"><span class="heart">&hearts;</span> <span id="d-like-count">0</span></button>
+        <button id="d-save" class="like-btn save-btn" aria-pressed="false" title="Save to your private collection"><span class="bookmark">&#9734;</span> <span class="save-label">SAVE</span></button>
         <span class="mono dim" id="d-comment-count">0 COMMENTS</span>
         <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
         <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8615;</button>
+        <button id="d-play" class="mono play-btn" aria-pressed="false" title="Play slideshow" hidden>
+          <span class="play-ring" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle class="pr-track" cx="12" cy="12" r="10"></circle>
+              <circle class="pr-arc" cx="12" cy="12" r="10"></circle>
+            </svg>
+            <span class="play-glyph">&#9654;</span>
+          </span>
+          <span class="play-label">PLAY</span>
+        </button>
       </div>
+      <div id="d-likers" class="likers" hidden></div>
       <div id="d-comments" class="d-comments"></div>
       <form id="d-comment-form" class="d-comment-form">
         <input id="d-comment-input" maxlength="500" placeholder="Add a comment&hellip;" autocomplete="off">

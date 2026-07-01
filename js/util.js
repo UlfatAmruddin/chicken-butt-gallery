@@ -1,4 +1,4 @@
-/* Pure helpers — no shared state, no DOM/Three dependencies.
+/* Pure helpers - no shared state, no DOM/Three dependencies.
    Safe to import anywhere. */
 
 /* escape user text for safe innerHTML interpolation */
@@ -14,7 +14,7 @@ export function avatarInner(profile) {
   return esc(ch);
 }
 
-/* wrap a value into [-range/2, range/2) — used for seamless sphere scrolling */
+/* wrap a value into [-range/2, range/2) - used for seamless sphere scrolling */
 export function wrap(x, range) {
   x = (x + range / 2) % range;
   if (x < 0) x += range;

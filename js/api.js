@@ -32,7 +32,8 @@ function addCommunityParam(url, community) {
   const scoped =
     path === '/api/photos' || path.startsWith('/api/photos/') ||
     path === '/api/users' || path.startsWith('/api/user/') ||
-    path === '/api/albums' || path.startsWith('/api/albums/');
+    path === '/api/albums' || path.startsWith('/api/albums/') ||
+    path === '/api/saved' || path.startsWith('/api/saved/');
   if (!scoped || parsed.searchParams.has('community')) return url;
   parsed.searchParams.set('community', community.id);
   return parsed.pathname + parsed.search + parsed.hash;

@@ -15,6 +15,7 @@ let communityPosts = [];     // posts fetched from the server
 let pool = [];               // community posts -> what the wall shows
 let communityActivity = [];
 let communityPrompts = [];
+let savedIds = new Set();     // postIds the logged-in user has privately saved here
 
 // give the API client read access to the active community for auto-scoping
 api.communityResolver = () => currentCommunity;
@@ -515,6 +516,7 @@ function fillDetail(p) {
   const navHidden = pool.length <= 1;
   document.getElementById('d-prev').hidden = navHidden;
   document.getElementById('d-next').hidden = navHidden;
+  updateSlideAvailability();
   if (p.community) {
     dEls.clientTop.textContent = `@${p.username} - VIEW PROFILE ↗`;
     dEls.clientTop.style.textDecoration = 'underline';
@@ -574,6 +576,119 @@ document.getElementById('d-prev').addEventListener('click', () => stepPhoto(-1))
 document.getElementById('d-next').addEventListener('click', () => stepPhoto(1));
 
 /* ============================================================
+   SLIDESHOW - hands-free auto-tour of the pool on the detail page.
+   Reuses stepPhoto(1) (which already wraps) driven by a GSAP tween of
+   an SVG progress ring; on each full ring it advances one photo.
+   ============================================================ */
+const slideBtn = document.getElementById('d-play');
+const slidePrArc = slideBtn ? slideBtn.querySelector('.pr-arc') : null;
+const slideLabel = slideBtn ? slideBtn.querySelector('.play-label') : null;
+const slideGlyph = slideBtn ? slideBtn.querySelector('.play-glyph') : null;
+const GLYPH_PLAY = '▶';    // right-pointing triangle
+const GLYPH_PAUSE = '‖';   // double vertical bar (pause)
+const SLIDE_ARC_LEN = 62.83;   // 2*pi*r (r=10), must match the CSS stroke-dasharray
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// per-photo dwell time; persisted like the render settings
+let slideIntervalMs = (() => {
+  const saved = parseInt(localStorage.getItem('pg_slide_ms'), 10);
+  return Number.isFinite(saved) && saved >= 2000 && saved <= 15000 ? saved : 4000;
+})();
+const slideshow = { playing: false, tween: null, paused: false };
+
+/* set the visible fill of the ring (0..1) without any animation */
+function setSlideRing(frac) {
+  if (!slidePrArc) return;
+  slidePrArc.style.strokeDashoffset = String(SLIDE_ARC_LEN * (1 - Math.max(0, Math.min(1, frac))));
+}
+
+/* run one dwell tween; on completion advance to the next photo and repeat */
+function slideTick() {
+  if (!slideshow.playing) return;
+  if (slidePrArc) gsap.killTweensOf(slidePrArc);
+  const prog = { v: 0 };
+  // reduced-motion: keep the ring static (no sweeping arc) but still use the
+  // tween purely as the dwell timer that advances photos.
+  setSlideRing(reduceMotion ? 1 : 0);
+  slideshow.tween = gsap.to(prog, {
+    v: 1,
+    duration: slideIntervalMs / 1000,
+    ease: 'none',
+    onUpdate: reduceMotion ? undefined : () => setSlideRing(prog.v),
+    onComplete: () => {
+      if (!slideshow.playing) return;
+      stepPhoto(1);          // wraps automatically; new photo re-renders the detail page
+      slideTick();           // queue the next dwell
+    },
+  });
+}
+
+function startSlideshow() {
+  if (slideshow.playing) return;
+  if (detail.style.display !== 'block') return;
+  if (pool.length <= 1) { toast('NOTHING TO PLAY YET'); return; }
+  slideshow.playing = true;
+  slideshow.paused = false;
+  if (slideBtn) {
+    slideBtn.classList.add('playing');
+    slideBtn.setAttribute('aria-pressed', 'true');
+    slideBtn.title = 'Pause slideshow';
+  }
+  if (slideLabel) slideLabel.textContent = 'PAUSE';
+  if (slideGlyph) slideGlyph.textContent = GLYPH_PAUSE;
+  toast('SLIDESHOW ON');
+  slideTick();
+}
+
+function stopSlideshow() {
+  if (!slideshow.playing && !slideshow.tween) return;
+  slideshow.playing = false;
+  slideshow.paused = false;
+  if (slideshow.tween) { slideshow.tween.kill(); slideshow.tween = null; }
+  if (slidePrArc) gsap.killTweensOf(slidePrArc);
+  setSlideRing(0);
+  if (slideBtn) {
+    slideBtn.classList.remove('playing');
+    slideBtn.setAttribute('aria-pressed', 'false');
+    slideBtn.title = 'Play slideshow';
+  }
+  if (slideLabel) slideLabel.textContent = 'PLAY';
+  if (slideGlyph) slideGlyph.textContent = GLYPH_PLAY;
+}
+
+/* temporary pause (hover / zoom / comment focus) - keeps playing state so it
+   auto-resumes; freezes the ring where it is. */
+function pauseSlideshow() {
+  if (!slideshow.playing || slideshow.paused) return;
+  slideshow.paused = true;
+  if (slideshow.tween) slideshow.tween.pause();
+}
+function resumeSlideshow() {
+  if (!slideshow.playing || !slideshow.paused) return;
+  // do not resume while any auto-pause condition still holds
+  if (detailZoom.scale > 1.001) return;
+  if (document.activeElement === dCommentInput) return;
+  slideshow.paused = false;
+  if (slideshow.tween) slideshow.tween.play();
+}
+
+function toggleSlideshow() {
+  if (slideshow.playing) stopSlideshow(); else startSlideshow();
+}
+
+if (slideBtn) slideBtn.addEventListener('click', toggleSlideshow);
+// NOTE: the pointerenter/pointerleave pause hooks live in the zoom section
+// below, where dHero is defined (avoids a temporal-dead-zone reference here).
+
+/* show/hide the play control alongside PREV/NEXT. only useful with >1 photo,
+   and it lives in the social row so it must share that row's visibility. */
+function updateSlideAvailability() {
+  if (!slideBtn) return;
+  const usable = pool.length > 1 && detailProject && detailProject.community;
+  slideBtn.hidden = !usable;
+  if (!usable && slideshow.playing) stopSlideshow();
+}
+
+/* ============================================================
    DETAIL IMAGE ZOOM + PAN (desktop wheel/drag/dblclick + touch pinch)
    ============================================================ */
 const dHero = document.querySelector('.d-hero');
@@ -602,6 +717,8 @@ function applyDetailZoom() {
   const zoomed = scale > 1.001;
   dHero.classList.toggle('zoomed', zoomed);
   if (!zoomed) dHero.classList.remove('grabbing');
+  // studying a zoomed photo should not get yanked to the next one
+  if (zoomed) pauseSlideshow(); else resumeSlideshow();
 }
 
 /* reset to identity - called on every photo open / navigation / close so a
@@ -717,6 +834,11 @@ function endPointer(e) {
 dHero.addEventListener('pointerup', endPointer);
 dHero.addEventListener('pointercancel', endPointer);
 
+// slideshow: pause while the pointer rests on the image (reading a photo),
+// resume on leave. defined here because dHero exists in this section.
+dHero.addEventListener('pointerenter', pauseSlideshow);
+dHero.addEventListener('pointerleave', resumeSlideshow);
+
 // keep the pan clamped correctly if the window is resized while zoomed
 window.addEventListener('resize', () => {
   if (detail.style.display === 'block' && detailZoom.scale > 1) applyDetailZoom();
@@ -753,8 +875,19 @@ function openProject(card) {
 
 function showDetail() {
   detail.style.display = 'block';
-  detail.scrollTop = 0;
   detail.setAttribute('aria-hidden', 'false');
+  // during a slideshow advance the panel is already open: skip the full slide-up
+  // intro and just crossfade the new photo/text in (or hard-cut for reduced motion).
+  if (slideshow && slideshow.playing) {
+    if (reduceMotion) {
+      gsap.set('.d-hero, #d-title, .d-meta, .d-cols', { clearProps: 'opacity,transform,clipPath' });
+    } else {
+      gsap.fromTo('.d-hero, #d-title, .d-meta, .d-cols',
+        { opacity: 0 }, { opacity: 1, duration: 0.5, ease: 'power2.out' });
+    }
+    return;
+  }
+  detail.scrollTop = 0;
   gsap.fromTo(detail, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.85, ease: 'power4.inOut' });
   gsap.fromTo('#d-title span', { yPercent: 110 }, { yPercent: 0, duration: 0.9, delay: 0.45, ease: 'power3.out' });
   gsap.fromTo('.d-meta, .d-cols', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.6, stagger: 0.1, ease: 'power2.out' });
@@ -763,6 +896,7 @@ function showDetail() {
 
 function closeProject() {
   if (detail.style.display !== 'block') return;
+  stopSlideshow();
   resetDetailZoom();
   cardsAnimating = true;
   markSceneDirty();
@@ -895,8 +1029,12 @@ document.getElementById('back-btn').addEventListener('click', closeProject);
 /* ---- reactions & comments (detail page) ---- */
 const dSocial = document.getElementById('d-social');
 const dLikeBtn = document.getElementById('d-like');
+const dSaveBtn = document.getElementById('d-save');
+const dSaveLabel = dSaveBtn ? dSaveBtn.querySelector('.save-label') : null;
+const dSaveGlyph = dSaveBtn ? dSaveBtn.querySelector('.bookmark') : null;
 const dLikeCount = document.getElementById('d-like-count');
 const dCommentCount = document.getElementById('d-comment-count');
+const dLikersEl = document.getElementById('d-likers');
 const dCommentsEl = document.getElementById('d-comments');
 const dCommentForm = document.getElementById('d-comment-form');
 const dCommentInput = document.getElementById('d-comment-input');
@@ -939,14 +1077,28 @@ function linkifyComment(el, text) {
   }
   if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
 }
+/* reflect whether the open photo is in the caller's private saved tray */
+function renderSaveState(p) {
+  if (!dSaveBtn) return;
+  const show = !!(p && p.community && me && p.postId);
+  dSaveBtn.hidden = !show;
+  if (!show) return;
+  const saved = savedIds.has(p.postId);
+  dSaveBtn.classList.toggle('saved', saved);
+  dSaveBtn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+  if (dSaveLabel) dSaveLabel.textContent = saved ? 'SAVED' : 'SAVE';
+  if (dSaveGlyph) dSaveGlyph.innerHTML = saved ? '&#9733;' : '&#9734;';   // filled vs outline star
+}
 function renderSocial(p) {
   if (!p || !p.community) { dSocial.hidden = true; return; }
   dSocial.hidden = false;
+  renderSaveState(p);
   const liked = !!(me && p.likes.includes(me.username));
   dLikeBtn.classList.toggle('liked', liked);
   dLikeCount.textContent = p.likes.length;
   const n = p.comments.length;
   dCommentCount.textContent = `${n} COMMENT${n === 1 ? '' : 'S'}`;
+  renderLikers(p);
   dCommentsEl.innerHTML = '';
   p.comments.slice().sort((a, b) => a.created - b.created).forEach(c => {
     const meta = userMeta[c.username] || { username: c.username, displayName: c.username };
@@ -965,6 +1117,91 @@ function renderSocial(p) {
     if (canDel) row.querySelector('.c-del').addEventListener('click', () => deleteComment(p, c.id));
     dCommentsEl.appendChild(row);
   });
+  // if the roster has not loaded yet (e.g. deep-link open), pull it so liker
+  // + comment display names/avatars fill in, then re-render if still on this
+  // post. an in-flight flag stops overlapping refetches, and we only re-render
+  // when the roster actually filled in, so an empty/failed /api/users response
+  // does not recurse and hammer the endpoint forever.
+  if (!Object.keys(userMeta).length && (p.likes.length || p.comments.length) && !renderSocial._roster) {
+    renderSocial._roster = true;
+    ensureUserMeta().finally(() => {
+      renderSocial._roster = false;
+      if (detailProject === p && Object.keys(userMeta).length) renderSocial(p);
+    });
+  }
+}
+/* who liked this photo: overlapping avatar stack + "LIKED BY @a, @b +N",
+   every avatar/name a button that opens that person's profile. clicking the
+   summary expands a full clickable list. names come from p.likes (usernames);
+   userMeta gives us display names + avatars (fetched for comments already). */
+const MAX_LIKER_AVATARS = 5;
+function likerJump(name) { closeProject(); openPeople(name); }
+function renderLikers(p) {
+  const likes = Array.isArray(p.likes) ? p.likes : [];
+  if (!likes.length) { dLikersEl.hidden = true; dLikersEl.innerHTML = ''; return; }
+  dLikersEl.hidden = false;
+  dLikersEl.classList.remove('expanded');
+  dLikersEl.innerHTML = '';
+
+  const stack = document.createElement('div');
+  stack.className = 'likers-stack';
+  likes.slice(0, MAX_LIKER_AVATARS).forEach((name, i) => {
+    const meta = userMeta[name] || { username: name };
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'likers-av';
+    b.style.zIndex = String(MAX_LIKER_AVATARS - i);
+    b.title = '@' + name;
+    b.innerHTML = `<span class="avatar sm">${avatarInner(meta)}</span>`;
+    b.addEventListener('click', () => likerJump(name));
+    stack.appendChild(b);
+  });
+  dLikersEl.appendChild(stack);
+
+  // summary line: "LIKED BY @a, @b +N" - names are buttons, extras toggle the list
+  const summary = document.createElement('div');
+  summary.className = 'likers-summary mono dim';
+  const label = document.createElement('span');
+  label.className = 'likers-label';
+  label.textContent = 'LIKED BY ';
+  summary.appendChild(label);
+  const named = likes.slice(0, 2);
+  named.forEach((name, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'likers-name';
+    b.textContent = '@' + name;
+    b.addEventListener('click', () => likerJump(name));
+    summary.appendChild(b);
+    if (i < named.length - 1 && likes.length > 1) summary.appendChild(document.createTextNode(', '));
+  });
+  const extra = likes.length - named.length;
+  if (extra > 0) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'likers-more';
+    more.textContent = ` +${extra}`;
+    more.addEventListener('click', () => dLikersEl.classList.toggle('expanded'));
+    summary.appendChild(more);
+  }
+  dLikersEl.appendChild(summary);
+
+  // full clickable list, revealed when .expanded is set
+  const full = document.createElement('div');
+  full.className = 'likers-list';
+  likes.forEach(name => {
+    const meta = userMeta[name] || { username: name };
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'likers-row';
+    b.innerHTML =
+      `<span class="avatar sm">${avatarInner(meta)}</span>` +
+      `<span class="lr-name">${esc(meta.displayName || name)}</span>` +
+      `<span class="mono dim lr-user">@${esc(name)}</span>`;
+    b.addEventListener('click', () => likerJump(name));
+    full.appendChild(b);
+  });
+  dLikersEl.appendChild(full);
 }
 async function deleteComment(p, cid) {
   try {
@@ -985,6 +1222,26 @@ dLikeBtn.addEventListener('click', async () => {
     syncPostSocial(p);
     renderSocial(p);
   } catch (e) { toast(String(e.message || 'COULD NOT LIKE').toUpperCase()); }
+});
+if (dSaveBtn) dSaveBtn.addEventListener('click', async () => {
+  const p = detailProject;
+  if (!p || !p.postId || !me) return;
+  const wasSaved = savedIds.has(p.postId);
+  // optimistic flip, same pattern as the like button
+  if (wasSaved) savedIds.delete(p.postId); else savedIds.add(p.postId);
+  renderSaveState(p);
+  try {
+    const r = await api.call(wasSaved ? 'DELETE' : 'POST', `/api/photos/${p.postId}/save`);
+    if (r.saved) savedIds.add(p.postId); else savedIds.delete(p.postId);
+    renderSaveState(p);
+    toast(r.saved ? 'SAVED TO COLLECTION' : 'REMOVED FROM SAVED');
+    if (flatOpen && flatSavedOnly) renderFlatView();   // keep the SAVED grid live
+  } catch (e) {
+    // revert on failure
+    if (wasSaved) savedIds.add(p.postId); else savedIds.delete(p.postId);
+    renderSaveState(p);
+    toast(String(e.message || 'COULD NOT SAVE').toUpperCase());
+  }
 });
 dCommentForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1081,6 +1338,9 @@ dCommentInput.addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideMentionMenu(); }
 });
 dCommentInput.addEventListener('blur', () => setTimeout(hideMentionMenu, 120));
+// pause the slideshow while someone is writing a comment; resume when they leave
+dCommentInput.addEventListener('focus', pauseSlideshow);
+dCommentInput.addEventListener('blur', resumeSlideshow);
 
 window.addEventListener('keydown', (e) => {
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
@@ -1095,11 +1355,20 @@ window.addEventListener('keydown', (e) => {
       return;
     }
   }
+  // "P" toggles the slideshow while a photo is open (not while typing / in a modal)
+  if ((e.key === 'p' || e.key === 'P') && detail.style.display === 'block') {
+    const ae = document.activeElement;
+    const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+    const modalOpen = !uploadModal.hidden || !albumModal.hidden
+      || !pickAlbumModal.hidden || !addPhotosModal.hidden;
+    if (!typing && !modalOpen) { e.preventDefault(); toggleSlideshow(); return; }
+  }
   if (e.key === 'Escape') {
     if (!uploadModal.hidden) closeUpload();
     else if (!albumModal.hidden) closeAlbumModal();
     else if (!pickAlbumModal.hidden) closePickAlbum();
     else if (!addPhotosModal.hidden) { closeAddPhotos(); if (viewingAlbum) showAlbum(viewingAlbum.album.id); }
+    else if (detail.style.display === 'block' && slideshow.playing) { e.preventDefault(); stopSlideshow(); return; }
     else if (detail.style.display === 'block' && detailZoom.scale > 1.001) { e.preventDefault(); resetDetailZoom(); return; }
     else if (detail.style.display === 'block') closeProject();
     else if (flatOpen) closeFlatView();
@@ -1186,6 +1455,7 @@ navBtns.forEach(b => b.addEventListener('click', () => {
   setNav(view);
   if (view === 'albums') { closeFlatView(); closePeople(); openAlbums(); }
   else if (view === 'people') { closeFlatView(); closeAlbums(); openPeople(); }
+  else if (view === 'saved') { closeAlbums(); closePeople(); openSaved(); setRoute(communityRoute('saved')); }
   else { closeFlatView(); closeAlbums(); closePeople(); }   // gallery
 }));
 
@@ -1209,10 +1479,14 @@ let flatOpen = false;
 let flatMode = 'grid';
 let flatQuery = '';
 let flatSort = 'new';
+let flatSavedOnly = false;   // when true, the flat view is the private "SAVED" tray
+
+const flatTitleEl = document.querySelector('#flat-view .people-title');
 
 function filterSortFlat() {
   const q = flatQuery.trim().toLowerCase();
   let list = pool.slice();
+  if (flatSavedOnly) list = list.filter(p => p.postId && savedIds.has(p.postId));
   if (q) {
     list = list.filter(p => {
       const tags = Array.isArray(p.tags) ? p.tags.join(' ') : '';
@@ -1244,7 +1518,13 @@ function renderFlatView() {
   flatWrap.innerHTML = '';
   const list = filterSortFlat();
   flatEmpty.hidden = list.length > 0;
-  flatEmpty.textContent = (flatQuery.trim() && pool.length) ? 'NO PHOTOS MATCH YOUR SEARCH.' : 'NO PHOTOS YET.';
+  if (flatQuery.trim() && (flatSavedOnly ? savedIds.size : pool.length)) {
+    flatEmpty.textContent = 'NO PHOTOS MATCH YOUR SEARCH.';
+  } else if (flatSavedOnly) {
+    flatEmpty.textContent = 'NOTHING SAVED YET. TAP SAVE ON ANY PHOTO TO KEEP IT HERE.';
+  } else {
+    flatEmpty.textContent = 'NO PHOTOS YET.';
+  }
   list.forEach(p => {
     const likes = Array.isArray(p.likes) ? p.likes.length : 0;
     const comments = Array.isArray(p.comments) ? p.comments.length : 0;
@@ -1261,11 +1541,15 @@ function renderFlatView() {
   });
 }
 
-function openFlatView(mode = 'grid') {
+function openFlatView(mode = 'grid', saved = false) {
   if (!currentCommunity) { showCommunityHub(); return; }
   closePeople();
   closeAlbums();
-  setNav('gallery');
+  flatSavedOnly = !!saved;
+  setNav(flatSavedOnly ? 'saved' : 'gallery');
+  if (flatTitleEl) flatTitleEl.textContent = flatSavedOnly ? 'SAVED' : 'GALLERY';
+  flatEl.classList.toggle('saved-view', flatSavedOnly);
+  if (flatSavedOnly && me) refreshSaved().then(() => { if (flatOpen && flatSavedOnly) renderFlatView(); });
   if (!flatOpen) {
     flatOpen = true;
     flatEl.style.display = 'block';
@@ -1276,10 +1560,16 @@ function openFlatView(mode = 'grid') {
   setFlatMode(mode);
 }
 
+/* open the private SAVED tray (reuses the flat grid/list renderer) */
+function openSaved(mode = 'grid') { openFlatView(mode, true); }
+
 function closeFlatView() {
   if (!flatOpen) return;
   flatQuery = '';
   flatSearchEl.value = '';
+  flatSavedOnly = false;
+  flatEl.classList.remove('saved-view');
+  if (flatTitleEl) flatTitleEl.textContent = 'GALLERY';
   flatEl.setAttribute('aria-hidden', 'true');
   gsap.to(flatEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
@@ -1287,7 +1577,11 @@ function closeFlatView() {
   });
 }
 
-document.getElementById('flat-close').addEventListener('click', closeFlatView);
+document.getElementById('flat-close').addEventListener('click', () => {
+  const wasSaved = flatSavedOnly;
+  closeFlatView();
+  if (wasSaved) { clearRouteKind('saved'); setNav('gallery'); }
+});
 flatGridBtn.addEventListener('click', () => setFlatMode('grid'));
 flatListBtn.addEventListener('click', () => setFlatMode('list'));
 flatSearchEl.addEventListener('input', () => { flatQuery = flatSearchEl.value; renderFlatView(); });
@@ -1370,11 +1664,22 @@ async function refreshCommunity() {
   if (!currentCommunity) {
     communityPosts = [];
     userMeta = {};
+    savedIds = new Set();
     return;
   }
   try { communityPosts = await api.call('GET', '/api/photos'); }
   catch { communityPosts = []; }
   ensureUserMeta(true);   // refresh username -> {displayName, avatar} for comments
+  refreshSaved();         // pull this user's private saved tray for the community
+}
+
+/* fetch the caller's private saved postIds for the active community */
+async function refreshSaved() {
+  if (!currentCommunity || !me) { savedIds = new Set(); return; }
+  try {
+    const r = await api.call('GET', '/api/saved');
+    savedIds = new Set(Array.isArray(r.ids) ? r.ids : []);
+  } catch { savedIds = new Set(); }
 }
 
 /* rebuild the wall in place (after a new photo is posted) */
@@ -1635,6 +1940,7 @@ async function clearActiveCommunity() {
   }
   currentCommunity = null;
   communityPosts = [];
+  savedIds = new Set();
   buildPool();
   await loadPoolImages();
   disposeGallery();
@@ -2583,6 +2889,7 @@ document.getElementById('am-create').addEventListener('click', async () => {
 const pickAlbumModal = document.getElementById('pick-album-modal');
 let pickAlbumPhotoId = null;
 async function openPickAlbum(photoId) {
+  stopSlideshow();   // do not keep auto-advancing behind the modal
   pickAlbumPhotoId = photoId;
   pickAlbumModal.hidden = false;
   gsap.fromTo('#pick-album-modal .modal-box', { scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: 'power2.out' });
@@ -3064,6 +3371,13 @@ async function handleHashRoute() {
       setNav('gallery');
       return;
     }
+    if (view === 'saved') {
+      if (detail.style.display === 'block') closeProject();
+      closeAlbums();
+      closePeople();
+      openSaved();
+      return;
+    }
     if (view === 'photo' && itemId) {
       closeFlatView();
       closeAlbums();
@@ -3127,6 +3441,15 @@ async function handleHashRoute() {
     closeFlatView();
     closePeople();
     openAlbums(id, false);
+    return;
+  }
+
+  if (kind === 'saved') {
+    if (!currentCommunity) { if (me) await showCommunityHub(false); else await showLanding(false); return; }
+    if (detail.style.display === 'block') closeProject();
+    closeAlbums();
+    closePeople();
+    openSaved();
     return;
   }
 

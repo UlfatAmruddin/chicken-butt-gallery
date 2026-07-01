@@ -403,7 +403,39 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .like-btn .heart { font-size: 16px; color: #5d5d5d; transition: color .2s; }
 .like-btn.liked { border-color: #e0506a; color: #fff; }
 .like-btn.liked .heart { color: #e0506a; }
+/* private "save to collection" toggle (star bookmark) */
+.save-btn .save-label { font: 500 12px "Space Mono", monospace; letter-spacing: .1em; }
+.save-btn .bookmark { font-size: 16px; color: #5d5d5d; transition: color .2s, transform .2s; }
+.save-btn.saved { border-color: #d9b44a; color: #fff; }
+.save-btn.saved .bookmark { color: #f0c750; transform: scale(1.08); }
 #d-comment-count { letter-spacing: .08em; }
+
+/* ---- who liked this photo ---- */
+.likers { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.likers-stack { display: inline-flex; align-items: center; }
+.likers-av { border-radius: 50%; margin-left: -10px; transition: transform .15s; }
+.likers-av:first-child { margin-left: 0; }
+.likers-av:hover { transform: translateY(-2px); z-index: 20 !important; }
+.likers-av .avatar.sm { width: 30px; height: 30px; font-size: 12px; border: 2px solid #0a0a0a; }
+.likers-summary { font-size: 11px; letter-spacing: .06em; line-height: 1.4; }
+.likers-label { text-transform: none; }
+.likers-name, .likers-more {
+  font: inherit; color: #b8b8b8; letter-spacing: inherit;
+  text-decoration: underline; text-underline-offset: 2px; text-decoration-color: #444;
+}
+.likers-name:hover, .likers-more:hover { color: #fff; text-decoration-color: #fff; }
+.likers-more { color: #8a8a8a; }
+/* full clickable list, revealed on expand */
+.likers-list { display: none; width: 100%; flex-direction: column; gap: 2px; margin-top: 4px; }
+.likers.expanded .likers-list { display: flex; }
+.likers-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 6px 8px; border-radius: 8px; text-align: left; color: #e6e6e6;
+}
+.likers-row:hover { background: #1c1c1c; }
+.likers-row .avatar.sm { width: 28px; height: 28px; font-size: 12px; flex: none; }
+.likers-row .lr-name { font-size: 14px; font-weight: 500; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.likers-row .lr-user { font-size: 11px; }
 
 .d-comments { margin: 22px 0 8px; display: flex; flex-direction: column; gap: 18px; }
 .comment { display: flex; gap: 12px; }
@@ -795,6 +827,29 @@ textarea { resize: vertical; }
 .share-btn { color: #cfcfcf; }
 .share-btn:hover { color: #fff; }
 .dl-btn { margin-left: -4px; }
+
+/* slideshow play/pause toggle + progress ring (detail action row) */
+.play-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: #cfcfcf; letter-spacing: 0.06em;
+  transition: color .2s;
+}
+.play-btn:hover { color: #fff; }
+.play-btn .play-ring {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+}
+.play-btn .play-ring svg { position: absolute; inset: 0; width: 22px; height: 22px; transform: rotate(-90deg); }
+.play-btn .pr-track { fill: none; stroke: #2e2e2e; stroke-width: 2; }
+.play-btn .pr-arc {
+  fill: none; stroke: #cfcfcf; stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 62.83; stroke-dashoffset: 62.83;   /* 2*pi*10, fully hidden */
+}
+.play-btn .play-glyph { font-size: 8px; line-height: 1; color: #cfcfcf; margin-left: 1px; transition: color .2s; }
+.play-btn:hover .play-glyph, .play-btn:hover .pr-arc { color: #fff; stroke: #fff; }
+.play-btn.playing { color: #fff; }
+.play-btn.playing .pr-arc { stroke: #fff; }
+.play-btn.playing .play-glyph { color: #fff; font-size: 9px; margin-left: 0; letter-spacing: -1px; }
 #profile-share, #album-share { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
 #profile-share:hover, #album-share:hover { color: #fff; }
 
@@ -982,6 +1037,8 @@ textarea { resize: vertical; }
     width: 100%;
   }
   #community-chip, #invite-tools-btn { display: none; }
+  /* keep the 4-item nav pill on one line on narrow screens */
+  .pill-nav button { padding: 12px 16px; font-size: 14px; }
   .room-grid, .admin-grid { grid-template-columns: 1fr; }
   .room-hero { min-height: 260px; padding: 18px; }
   .admin-row, .activity-row { align-items: flex-start; }
