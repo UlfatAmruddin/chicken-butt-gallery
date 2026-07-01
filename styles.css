@@ -308,7 +308,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .entry-mode #me-chip,
 .entry-mode #notif-btn,
 .entry-mode #community-chip,
-.entry-mode #invite-tools-btn {
+.entry-mode #invite-tools-btn,
+.entry-mode #recap-chip {
   opacity: 0;
   pointer-events: none;
 }
@@ -572,7 +573,11 @@ textarea { resize: vertical; }
   position: fixed; top: 34px; left: 324px; z-index: 10;
   color: #cfcfcf;
 }
-#community-chip:hover, #invite-tools-btn:hover { color: #fff; }
+#recap-chip {
+  position: fixed; top: 34px; left: 404px; z-index: 10;
+  color: #cfcfcf;
+}
+#community-chip:hover, #invite-tools-btn:hover, #recap-chip:hover { color: #fff; }
 
 /* ---------- notifications inbox ---------- */
 #notif-btn {
@@ -1021,10 +1026,14 @@ textarea { resize: vertical; }
 .flat-grid.list .locate-pin { width: 26px; height: 26px; font-size: 13px; top: 5px; right: 5px; }
 
 /* ---------- community room / admin ---------- */
-#community-room, #community-admin {
+#community-room, #community-admin, #recap-overlay {
   position: fixed; inset: 0; z-index: 60;
   background: #050505; display: none; overflow-y: auto;
 }
+#recap-close {
+  color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px;
+}
+#recap-close:hover { color: #fff; }
 .room-top-actions { display: flex; align-items: center; gap: 22px; }
 .room-top-actions button, #admin-close, #room-close, #room-switch, #room-admin-open {
   color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px;
@@ -1080,6 +1089,53 @@ textarea { resize: vertical; }
   display: block; color: #fff; font-size: 12px; padding: 8px 9px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ---- community recap ("wrapped" digest) ---- */
+.recap-hero {
+  margin: 40px 0 22px;
+  border: 1px solid #1f1f1f;
+  border-radius: 16px;
+  padding: 28px;
+  background: #0f0f0f;
+}
+.recap-hero h1 {
+  color: #fff;
+  font-size: clamp(40px, 7vw, 96px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: .94;
+  text-transform: uppercase;
+  margin: 10px 0;
+}
+#recap-range { letter-spacing: .14em; }
+#recap-sub { color: #a9a9a9; font-size: 15px; line-height: 1.6; max-width: 720px; }
+.recap-stats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+  margin-bottom: 16px;
+}
+.recap-stat {
+  background: #0d0d0d;
+  border: 1px solid #1f1f1f;
+  border-radius: 14px;
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.recap-stat .rs-num {
+  color: #fff; font-size: clamp(28px, 4vw, 48px); font-weight: 600;
+  letter-spacing: -0.03em; line-height: 1;
+}
+.recap-stat .rs-label { letter-spacing: .14em; font-size: 12px; }
+.recap-strip {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
+}
+.recap-tile .recap-tile-sub {
+  display: block; padding: 0 9px 9px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.recap-members { display: flex; flex-direction: column; gap: 8px; }
+.recap-member { cursor: pointer; }
+.recap-member:hover { border-color: #6a6a6a; }
+.recap-member .avatar.sm { flex: none; }
 
 /* ---- "find on sphere" overlay pin (flat cards + room pinned tiles) ---- */
 .locate-pin {
@@ -1243,10 +1299,12 @@ textarea { resize: vertical; }
   .hero-actions .pill-white, .hero-actions .ghost-pill, .hub-actions .pill-white, .hub-actions .ghost-pill {
     width: 100%;
   }
-  #community-chip, #invite-tools-btn { display: none; }
+  #community-chip, #invite-tools-btn, #recap-chip { display: none; }
   /* keep the 4-item nav pill on one line on narrow screens */
   .pill-nav button { padding: 12px 16px; font-size: 14px; }
   .room-grid, .admin-grid { grid-template-columns: 1fr; }
+  .recap-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recap-hero { padding: 18px; }
   .room-hero { min-height: 260px; padding: 18px; }
   .admin-row, .activity-row { align-items: flex-start; }
   .admin-actions { width: 100%; justify-content: flex-start; }

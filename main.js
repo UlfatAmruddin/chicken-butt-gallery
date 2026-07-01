@@ -1133,6 +1133,7 @@ function focusCardOnSphere(postId) {
   if (peopleOpen) closePeople();
   if (roomOpen) closeCommunityRoom();
   if (adminOpen) closeAdminPanel();
+  if (recapOpen) closeRecap();
   if (panelOpen) hideFilterPanel();
   if (notifOpen) closeNotifPanel();
   hideEntryScreens();
@@ -1657,6 +1658,7 @@ window.addEventListener('keydown', (e) => {
     else if (detail.style.display === 'block' && slideshow.playing) { e.preventDefault(); stopSlideshow(); return; }
     else if (detail.style.display === 'block' && detailZoom.scale > 1.001) { e.preventDefault(); resetDetailZoom(); return; }
     else if (detail.style.display === 'block') closeProject();
+    else if (recapOpen) { closeRecap(); clearRouteKind('recap'); }
     else if (flatOpen) closeFlatView();
     else if (albumsOpen) {
       if (!document.getElementById('album-page').hidden) showAlbumsList();
@@ -1738,6 +1740,8 @@ function setNav(view) {
 }
 navBtns.forEach(b => b.addEventListener('click', () => {
   const view = b.dataset.view;
+  closeRecap();
+  clearRouteKind('recap');
   setNav(view);
   if (view === 'albums') { closeFlatView(); closePeople(); openAlbums(); }
   else if (view === 'people') { closeFlatView(); closeAlbums(); openPeople(); }
@@ -1836,6 +1840,7 @@ function openFlatView(mode = 'grid', saved = false) {
   if (!currentCommunity) { showCommunityHub(); return; }
   closePeople();
   closeAlbums();
+  closeRecap();
   flatSavedOnly = !!saved;
   setNav(flatSavedOnly ? 'saved' : 'gallery');
   if (flatTitleEl) flatTitleEl.textContent = flatSavedOnly ? 'SAVED' : 'GALLERY';
@@ -2045,8 +2050,10 @@ const communityListEl = document.getElementById('community-list');
 const communityEmptyEl = document.getElementById('community-empty');
 const communityChip = document.getElementById('community-chip');
 const inviteToolsBtn = document.getElementById('invite-tools-btn');
+const recapChip = document.getElementById('recap-chip');
 const communityRoomEl = document.getElementById('community-room');
 const communityAdminEl = document.getElementById('community-admin');
+const recapOverlayEl = document.getElementById('recap-overlay');
 const onboardingModal = document.getElementById('onboarding-modal');
 const communityModal = document.getElementById('community-modal');
 const enterInviteModal = document.getElementById('enter-invite-modal');
@@ -2066,11 +2073,12 @@ let authMode = 'login';
 let pendingInviteCode = '';
 let roomOpen = false;
 let adminOpen = false;
+let recapOpen = false;
 let showOnboardingAfterEnter = false;
 
 function overlayOpen() {
   return !landingEl.hidden || !communityHubEl.hidden || !inviteViewEl.hidden || !authEl.hidden
-    || roomOpen || adminOpen || peopleOpen || albumsOpen || flatOpen || !uploadModal.hidden
+    || roomOpen || adminOpen || recapOpen || peopleOpen || albumsOpen || flatOpen || !uploadModal.hidden
     || !communityModal.hidden || !enterInviteModal.hidden || !inviteToolsModal.hidden
     || !onboardingModal.hidden
     || !albumModal.hidden || !pickAlbumModal.hidden || !addPhotosModal.hidden
@@ -2218,12 +2226,16 @@ function updateCommunityHud() {
   if (!currentCommunity) {
     communityChip.hidden = true;
     inviteToolsBtn.hidden = true;
+    recapChip.hidden = true;
     return;
   }
   communityChip.hidden = false;
   communityChip.textContent = currentCommunity.name.toUpperCase();
   inviteToolsBtn.hidden = !(isCommunityAdmin() || isAdminProfile());
   inviteToolsBtn.textContent = 'Admin';
+  // recap is for everyone, but stays out of the entry screens and off mobile
+  const narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+  recapChip.hidden = document.body.classList.contains('entry-mode') || narrow;
 }
 
 function setEntryMode(on) {
@@ -2263,6 +2275,7 @@ async function showLanding(clearHash = true) {
   closePeople();
   closeAdminPanel();
   closeCommunityRoom();
+  closeRecap();
   if (detail.style.display === 'block') closeProject();
   await clearActiveCommunity();
   hideEntryScreens();
@@ -2280,6 +2293,7 @@ async function showCommunityHub(clearHash = true) {
   closePeople();
   closeAdminPanel();
   closeCommunityRoom();
+  closeRecap();
   if (detail.style.display === 'block') closeProject();
   await clearActiveCommunity();
   hideEntryScreens();
@@ -2582,6 +2596,7 @@ async function openCommunityRoom() {
   closeFlatView();
   closeAlbums();
   closePeople();
+  closeRecap();
   if (detail.style.display === 'block') closeProject();
   await refreshCurrentCommunity();
   await loadCommunityExtras();
@@ -2668,10 +2683,115 @@ function activityLabel(ev) {
   return ev.title || ev.type;
 }
 
+/* ============================================================
+   COMMUNITY RECAP - a shared "wrapped" digest of the sphere so far.
+   Fetched per community; every top photo is a doorway back to the sphere.
+   ============================================================ */
+function recapDateLabel(range) {
+  if (!range || !range.first) return 'NO MEMORIES YET';
+  const first = new Date(range.first).toLocaleDateString();
+  const last = new Date(range.last).toLocaleDateString();
+  return first === last ? first : `${first} - ${last}`;
+}
+
+async function openRecap(updateHash = true) {
+  if (!currentCommunity) { showCommunityHub(); return; }
+  closeFlatView();
+  closeAlbums();
+  closePeople();
+  closeCommunityRoom();
+  closeAdminPanel();
+  if (detail.style.display === 'block') closeProject();
+  let r;
+  try { r = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/recap`); }
+  catch (e) { toast(String(e.message || 'COULD NOT LOAD RECAP').toUpperCase()); return; }
+  renderRecap(r);
+  recapOpen = true;
+  recapOverlayEl.style.display = 'block';
+  recapOverlayEl.setAttribute('aria-hidden', 'false');
+  recapOverlayEl.scrollTop = 0;
+  if (updateHash) setRoute(communityRoute('recap'));
+  gsap.fromTo(recapOverlayEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut' });
+}
+
+function closeRecap() {
+  if (!recapOpen) return;
+  recapOverlayEl.setAttribute('aria-hidden', 'true');
+  gsap.to(recapOverlayEl, {
+    yPercent: 100, duration: 0.65, ease: 'power3.inOut',
+    onComplete: () => { recapOverlayEl.style.display = 'none'; recapOpen = false; },
+  });
+}
+
+function renderRecap(r) {
+  if (!r) return;
+  document.getElementById('recap-title').textContent = (r.community && r.community.name) || currentCommunity.name;
+  document.getElementById('recap-range').textContent = recapDateLabel(r.range);
+  document.getElementById('recap-sub').textContent = 'A shared recap of everything we have built together.';
+
+  const stats = [
+    [r.photoCount, `PHOTO${r.photoCount === 1 ? '' : 'S'}`],
+    [r.albumCount, `ALBUM${r.albumCount === 1 ? '' : 'S'}`],
+    [r.memberCount, `MEMBER${r.memberCount === 1 ? '' : 'S'}`],
+    [r.promptCount, `PROMPT${r.promptCount === 1 ? '' : 'S'}`],
+  ];
+  const statsWrap = document.getElementById('recap-stats');
+  statsWrap.innerHTML = '';
+  stats.forEach(([n, label]) => {
+    const cell = document.createElement('div');
+    cell.className = 'recap-stat';
+    cell.innerHTML = `<span class="rs-num">${esc(String(n || 0))}</span><span class="mono dim rs-label">${esc(label)}</span>`;
+    statsWrap.appendChild(cell);
+  });
+
+  const strip = document.getElementById('recap-photos');
+  strip.innerHTML = '';
+  (r.topPhotos || []).forEach(tp => {
+    const onSphere = postOnSphere(tp.id);
+    const tile = document.createElement('button');
+    tile.className = 'mini-photo recap-tile';
+    tile.innerHTML =
+      `<span class="mp-media">` +
+      `<img src="${esc(mediaSrc(tp.file))}" alt="${esc(tp.title || '')}">` +
+      (onSphere ? LOCATE_PIN_HTML : '') +
+      `</span>` +
+      `<span>${esc(tp.title || 'UNTITLED')}</span>` +
+      `<small class="mono dim recap-tile-sub">@${esc(tp.username || 'unknown')} / ${esc(String(tp.loveScore || 0))} LOVE</small>`;
+    tile.addEventListener('click', () => openRecapPhoto(tp.id));
+    wireLocatePin(tile, tp.id);
+    strip.appendChild(tile);
+  });
+  document.getElementById('recap-photos-empty').hidden = (r.topPhotos || []).length > 0;
+
+  const membersWrap = document.getElementById('recap-members');
+  membersWrap.innerHTML = '';
+  (r.topMembers || []).forEach(m => {
+    const row = document.createElement('button');
+    row.className = 'activity-row recap-member';
+    row.innerHTML =
+      `<span class="avatar sm">${avatarInner(m)}</span>` +
+      `<span><strong>${esc(m.displayName || m.username)}</strong>` +
+      `<small class="mono dim">@${esc(m.username)} / ${esc(String(m.photoCount || 0))} PHOTO${m.photoCount === 1 ? '' : 'S'}</small></span>`;
+    row.addEventListener('click', () => { closeRecap(); openPeople(m.username); });
+    membersWrap.appendChild(row);
+  });
+  document.getElementById('recap-members-empty').hidden = (r.topMembers || []).length > 0;
+}
+
+/* a recap photo tile is a doorway back into the sphere: prefer the local
+   cache so the detail view is fully wired, else spin the sphere to it. */
+function openRecapPhoto(postId) {
+  closeRecap();
+  const post = communityPosts.find(p => p.id === postId);
+  if (post) openDetailFor(postToProject(post));
+  else { clearRouteKind('recap'); focusCardOnSphere(postId); }
+}
+
 let csCoverData;
 async function openAdminPanel() {
   if (!currentCommunity || !(isCommunityAdmin() || isAdminProfile())) return;
   closeCommunityRoom();
+  closeRecap();
   adminOpen = true;
   communityAdminEl.style.display = 'block';
   communityAdminEl.setAttribute('aria-hidden', 'false');
@@ -2932,6 +3052,8 @@ document.getElementById('invite-login').addEventListener('click', () => { if (me
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
 communityChip.addEventListener('click', openCommunityRoom);
 inviteToolsBtn.addEventListener('click', openAdminPanel);
+recapChip.addEventListener('click', () => openRecap());
+document.getElementById('recap-close').addEventListener('click', () => { closeRecap(); clearRouteKind('recap'); });
 
 /* ============================================================
    TOAST
@@ -2956,6 +3078,7 @@ let viewingProfile = null;
 
 function openPeople(username, updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
+  closeRecap();
   setNav('people');
   if (peopleOpen) { if (username) showProfile(username, updateHash); return; }
   peopleOpen = true;
@@ -3036,6 +3159,7 @@ function renderAlbumsGrid(gridEl, list, emptyEl) {
 
 function openAlbums(albumId, updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
+  closeRecap();
   setNav('albums');
   if (albumsOpen) { albumId ? showAlbum(albumId, updateHash) : showAlbumsList(); return; }
   albumsOpen = true;
@@ -3788,6 +3912,13 @@ async function handleHashRoute() {
       closeAlbums();
       closePeople();
       openSaved();
+      return;
+    }
+    if (view === 'recap') {
+      closeFlatView();
+      closeAlbums();
+      closePeople();
+      await openRecap(false);
       return;
     }
     if (view === 'photo' && itemId) {

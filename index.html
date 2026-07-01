@@ -120,6 +120,7 @@
 </div>
 <button id="community-chip" class="mono" hidden>COMMUNITY</button>
 <button id="invite-tools-btn" class="mono" hidden>Invite</button>
+<button id="recap-chip" class="mono" hidden>Recap</button>
 <button class="lets-talk" id="lets-talk">Let's Talk</button>
 
 <!-- ======= ON THIS DAY RIBBON ======= -->
@@ -472,6 +473,32 @@
       <h2 class="mono dim">RECENT MOMENTS</h2>
       <div id="room-feed" class="activity-feed"></div>
       <p id="room-feed-empty" class="mono dim">NO ACTIVITY YET.</p>
+    </section>
+  </div>
+</section>
+
+<!-- ======= COMMUNITY RECAP ======= -->
+<section id="recap-overlay" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="recap-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
+      <span class="mono dim">SHARED RECAP</span>
+    </div>
+    <div class="recap-hero">
+      <p class="mono dim" id="recap-range"></p>
+      <h1 id="recap-title"></h1>
+      <p class="mono dim" id="recap-sub"></p>
+    </div>
+    <div class="recap-stats" id="recap-stats"></div>
+    <section class="room-panel">
+      <h2 class="mono dim">MOST LOVED</h2>
+      <div id="recap-photos" class="recap-strip"></div>
+      <p id="recap-photos-empty" class="mono dim" hidden>NO PHOTOS YET. UPLOAD SOME MEMORIES TO FILL THIS IN.</p>
+    </section>
+    <section class="room-panel">
+      <h2 class="mono dim">MOST ACTIVE</h2>
+      <div id="recap-members" class="recap-members"></div>
+      <p id="recap-members-empty" class="mono dim" hidden>NO CONTRIBUTORS YET.</p>
     </section>
   </div>
 </section>
