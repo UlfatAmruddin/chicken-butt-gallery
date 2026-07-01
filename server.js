@@ -903,7 +903,7 @@ async function handleApi(req, res, pathname, params) {
 }
 
 /* ---------------- server ---------------- */
-http.createServer((req, res) => {
+function onRequest(req, res) {
   let u;
   try {
     u = new URL(req.url, 'http://localhost');
@@ -924,4 +924,11 @@ http.createServer((req, res) => {
 
   if (pathname.startsWith('/api/')) { handleApi(req, res, pathname, u.searchParams); return; }
   serveStatic(req, res, pathname);
-}).listen(8173, '127.0.0.1', () => console.log('serving at http://localhost:8173'));
+}
+
+// Listen on BOTH loopback stacks (127.0.0.1 and ::1) so http://localhost:8173
+// works however the OS resolves 'localhost' (Windows often prefers IPv6 ::1),
+// while staying loopback-only - not reachable from the LAN. The IPv6 listener
+// no-ops if ::1 is unavailable.
+http.createServer(onRequest).listen(8173, '127.0.0.1', () => console.log('serving at http://localhost:8173'));
+http.createServer(onRequest).listen(8173, '::1').on('error', () => {});
