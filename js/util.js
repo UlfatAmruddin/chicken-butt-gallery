@@ -103,3 +103,14 @@ export function buildFilmstrip(container, items, activeIndex, { onPick } = {}) {
     activeBtn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
   }
 }
+
+/* ============================================================
+   COMMUNITY RECAP - a shared "wrapped" digest of the sphere so far.
+   Fetched per community; every top photo is a doorway back to the sphere.
+   ============================================================ */
+export function recapDateLabel(range) {
+  if (!range || !range.first) return 'NO MEMORIES YET';
+  const first = new Date(range.first).toLocaleDateString();
+  const last = new Date(range.last).toLocaleDateString();
+  return first === last ? first : `${first} - ${last}`;
+}
