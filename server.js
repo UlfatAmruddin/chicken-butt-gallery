@@ -104,12 +104,13 @@ async function handleApi(req, res, pathname, params) {
       const auth = requireAuth(req, res);
       if (!auth) return;
       const me = auth.user.username;
-      const list = notifications
-        .filter(n => n.to === me)
+      const mine = notifications.filter(n => n.to === me);
+      const list = mine
         .sort((a, b) => b.created - a.created)
         .slice(0, 50)
         .map(publicNotification);
-      return send(res, 200, { notifications: list, unread: list.filter(n => !n.read).length });
+      // count unread across ALL of this user's notifications, not just the 50 shown
+      return send(res, 200, { notifications: list, unread: mine.filter(n => !n.read).length });
     }
 
     if (req.method === 'POST' && pathname === '/api/notifications/read') {
@@ -520,7 +521,9 @@ async function handleApi(req, res, pathname, params) {
     if (req.method === 'POST' && pathname === '/api/photos') {
       const ctx = requireCommunity(req, res, params);
       if (!ctx) return;
-      const b = JSON.parse(await readBody(req));
+      // 20MB body: a valid 12MB image base64-expands to ~16MB, so the default
+      // limit would 413 max-size uploads before saveImage's friendly check runs.
+      const b = JSON.parse(await readBody(req, 20 * 1024 * 1024));
       const saved = await saveImage(b.image, 'uploads', ctx.auth.user.username);
       if (saved.error) return send(res, 400, { error: saved.error });
       const yr = parseInt(b.year, 10);
@@ -765,7 +768,10 @@ async function handleApi(req, res, pathname, params) {
       if (!canManagePost(auth, post)) return send(res, 403, { error: 'You do not have permission to delete this photo.' });
       const photoId = post.id;
       await deleteImage(post.file);
-      posts.splice(i, 1);
+      // re-find by identity after the await: another request may have mutated
+      // posts during the network delete, making the captured index i stale.
+      const idx = posts.findIndex(p => p.id === photoId);
+      if (idx >= 0) posts.splice(idx, 1);
       saveJSON('posts.json', posts);
       let albumsChanged = false;
       albums.forEach(a => {
@@ -884,7 +890,8 @@ async function handleApi(req, res, pathname, params) {
     return send(res, 404, { error: 'Unknown API route.' });
   } catch (e) {
     const code = e.message === 'payload too large' ? 413 : e instanceof SyntaxError ? 400 : 500;
-    return send(res, code, { error: code === 500 ? 'Server error.' : e.message });
+    // never reflect a raw error message; use fixed client-safe strings
+    return send(res, code, { error: code === 413 ? 'Payload too large.' : code === 400 ? 'Invalid request body.' : 'Server error.' });
   }
 }
 

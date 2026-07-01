@@ -2836,20 +2836,28 @@ function renderCommunityHub() {
   communityEmptyEl.hidden = allCommunities.length > 0;
 }
 
+let communityLoadSeq = 0;
 async function enterCommunity(id, updateHash = true) {
   if (!me) {
     showAuth('login', { type: 'community', id });
     return false;
   }
+  // load token: a faster second switch supersedes this one, so a stale response
+  // never clobbers the newer community's data (mixed A-under-B renders).
+  const token = ++communityLoadSeq;
   stopTour();   // never let a tour's swapped pool leak across communities
+  let loaded;
   try {
-    currentCommunity = await api.call('GET', '/api/communities/' + encodeURIComponent(id));
+    loaded = await api.call('GET', '/api/communities/' + encodeURIComponent(id));
   } catch (e) {
+    if (token !== communityLoadSeq) return false;
     currentCommunity = null;
     toast(String(e.message || 'COMMUNITY NOT FOUND').toUpperCase());
     await showCommunityHub(false);
     return false;
   }
+  if (token !== communityLoadSeq) return false;
+  currentCommunity = loaded;
   hideEntryScreens();
   authEl.hidden = true;
   setEntryMode(false);
@@ -2857,8 +2865,11 @@ async function enterCommunity(id, updateHash = true) {
   loadNotifications();
   setNav('gallery');
   await refreshCommunity();
+  if (token !== communityLoadSeq) return false;
   await loadCommunityExtras();
+  if (token !== communityLoadSeq) return false;
   await rebuildGallery();
+  if (token !== communityLoadSeq) return false;
   if (updateHash) setRoute(communityRoute());
   if (showOnboardingAfterEnter) {
     showOnboardingAfterEnter = false;
@@ -4995,7 +5006,11 @@ async function copyRoute(path) {
   }
 }
 
+let hashRouteSeq = 0;
 async function handleHashRoute() {
+  // route generation: if a newer hashchange fires while we await, abandon this
+  // run so overlapping navigations can't land on the wrong overlay/photo.
+  const g = ++hashRouteSeq;
   if (location.hash === mutedHash) { mutedHash = ''; return; }
   const parts = routeParts();
   const [kind, id] = parts;
@@ -5025,7 +5040,7 @@ async function handleHashRoute() {
     }
     if (!currentCommunity || (currentCommunity.id !== cid && currentCommunity.slug !== cid)) {
       const ok = await enterCommunity(cid, false);
-      if (!ok) return;
+      if (!ok || g !== hashRouteSeq) return;
     }
     if (!view) {
       if (detail.style.display === 'block') closeProject();
@@ -5059,6 +5074,7 @@ async function handleHashRoute() {
       let post = communityPosts.find(p => p.id === itemId);
       if (!post) {
         await refreshCommunity();
+        if (g !== hashRouteSeq) return;
         buildPool();
         post = communityPosts.find(p => p.id === itemId);
       }
@@ -5093,6 +5109,7 @@ async function handleHashRoute() {
     let post = communityPosts.find(p => p.id === id);
     if (!post) {
       await refreshCommunity();
+      if (g !== hashRouteSeq) return;
       buildPool();
       post = communityPosts.find(p => p.id === id);
     }

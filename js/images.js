@@ -9,7 +9,9 @@ export function loadImage(src) {
     const img = new Image();
     img.decoding = 'async';
     img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    // do not cache the failure: drop the entry so a later call can retry after
+    // a transient network error instead of blanking the card for the session.
+    img.onerror = () => { imageCache.delete(src); resolve(null); };
     img.src = src;
   });
   imageCache.set(src, promise);
