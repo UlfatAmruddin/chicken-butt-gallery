@@ -6,6 +6,7 @@ import { api } from './js/api.js';
 import { toast } from './js/toast.js';
 import { loadImage } from './js/images.js';
 import { initCinema } from './js/cinema.js';
+import { renderMosaicPoster } from './js/mosaic.js';
 const gsap = window.gsap;
 
 let me = null;               // logged-in user's profile
@@ -1173,6 +1174,7 @@ function showDetail() {
 
 function closeProject() {
   if (detail.style.display !== 'block') return;
+  closeReactionRoster();   // don't leave a reactor popover hanging over the sphere
   if (cinema && cinema.isOpen()) cinema.close();
   stopSlideshow();
   stopTour();          // restore the normal pool order if a tour was running
@@ -1493,10 +1495,13 @@ function renderSaveState(p) {
 /* the compact reaction bar: one chip per extra emoji (laugh/wow/sad/fire).
    each chip shows the emoji + its count, highlights when the current user
    picked it, and toggles on click. counts are numbers and glyphs come from
-   the fixed EMOJI map, so nothing user-typed touches innerHTML. */
+   the fixed EMOJI map, so nothing user-typed touches innerHTML. a chip with
+   reactors also grows a tiny caret that opens a roster popover (see below) so
+   you can see WHO reacted without blocking the primary toggle click. */
 function renderReactions(p) {
   if (!dReactionsEl) return;
   const reactions = (p.reactions && typeof p.reactions === 'object') ? p.reactions : {};
+  closeReactionRoster();   // any old popover belongs to the previous render
   dReactionsEl.innerHTML = '';
   dReactionsEl.hidden = !me;
   if (!me) return;
@@ -1512,7 +1517,93 @@ function renderReactions(p) {
       (users.length ? `<span class="r-count">${users.length}</span>` : '');
     btn.addEventListener('click', () => toggleReaction(p, key));
     dReactionsEl.appendChild(btn);
+    // secondary affordance: reveals the roster of reactors. kept separate from
+    // the chip so the primary click always toggles and reacting is never blocked.
+    if (users.length) {
+      const info = document.createElement('button');
+      info.type = 'button';
+      info.className = 'reaction-who';
+      info.setAttribute('aria-label', `See who reacted ${EMOJI[key]}`);
+      info.setAttribute('aria-expanded', 'false');
+      info.title = 'Who reacted';
+      info.innerHTML = '<span class="rw-caret" aria-hidden="true">&#9662;</span>';
+      info.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleReactionRoster(p, key, info);
+      });
+      dReactionsEl.appendChild(info);
+    }
   });
+}
+/* the reaction roster popover: shows every reactor for one emoji (avatar +
+   display name + @username), each row jumping to that person's profile via the
+   same likerJump() the likers stack uses. only one popover is open at a time;
+   it closes on outside pointerdown, Escape, and whenever the reactions re-render
+   (fillDetail / renderSocial / a toggle). names run through esc(); glyphs come
+   from the fixed EMOJI map, so nothing user-typed touches innerHTML raw. */
+let reactionRoster = null;   // { el, key, anchor } | null
+function closeReactionRoster() {
+  if (!reactionRoster) return;
+  const { el, anchor } = reactionRoster;
+  if (anchor) anchor.setAttribute('aria-expanded', 'false');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+  document.removeEventListener('pointerdown', onReactionRosterPointer, true);
+  document.removeEventListener('keydown', onReactionRosterKey, true);
+  reactionRoster = null;
+}
+function onReactionRosterPointer(e) {
+  if (!reactionRoster) return;
+  const { el, anchor } = reactionRoster;
+  if (el.contains(e.target) || (anchor && anchor.contains(e.target))) return;
+  closeReactionRoster();
+}
+function onReactionRosterKey(e) {
+  if (e.key === 'Escape') closeReactionRoster();
+}
+function toggleReactionRoster(p, key, anchor) {
+  // clicking the caret of an already-open roster closes it
+  if (reactionRoster && reactionRoster.key === key) { closeReactionRoster(); return; }
+  closeReactionRoster();
+  const reactions = (p.reactions && typeof p.reactions === 'object') ? p.reactions : {};
+  const users = Array.isArray(reactions[key]) ? reactions[key] : [];
+  if (!users.length) return;
+  const el = document.createElement('div');
+  el.className = 'reaction-roster';
+  el.setAttribute('role', 'menu');
+  const head = document.createElement('div');
+  head.className = 'rr-head mono dim';
+  head.innerHTML = `<span class="rr-emoji">${EMOJI[key]}</span>` +
+    `<span>${users.length} REACTED</span>`;
+  el.appendChild(head);
+  const list = document.createElement('div');
+  list.className = 'rr-list';
+  users.forEach(name => {
+    const meta = userMeta[name] || { username: name };
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'rr-row';
+    b.setAttribute('role', 'menuitem');
+    b.innerHTML =
+      `<span class="avatar sm">${avatarInner(meta)}</span>` +
+      `<span class="rr-name">${esc(meta.displayName || name)}</span>` +
+      `<span class="mono dim rr-user">@${esc(name)}</span>`;
+    b.addEventListener('click', () => { closeReactionRoster(); likerJump(name); });
+    list.appendChild(b);
+  });
+  el.appendChild(list);
+  // anchor under the caret, clamped inside the reaction bar so it never clips off
+  dReactionsEl.appendChild(el);
+  const barRect = dReactionsEl.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  let left = anchorRect.left - barRect.left;
+  const maxLeft = Math.max(0, dReactionsEl.clientWidth - el.offsetWidth);
+  if (left > maxLeft) left = maxLeft;
+  if (left < 0) left = 0;
+  el.style.left = left + 'px';
+  anchor.setAttribute('aria-expanded', 'true');
+  reactionRoster = { el, key, anchor };
+  document.addEventListener('pointerdown', onReactionRosterPointer, true);
+  document.addEventListener('keydown', onReactionRosterKey, true);
 }
 async function toggleReaction(p, emoji) {
   if (!p || !me || !REACTION_KEYS.includes(emoji)) return;
@@ -1546,6 +1637,7 @@ function renderSocial(p) {
   const buildRow = (c, reply) => {
     const meta = userMeta[c.username] || { username: c.username, displayName: c.username };
     const canDel = me && (me.username === c.username || me.username === p.username || isAdminProfile() || isCommunityAdmin());
+    const canEdit = !!(me && me.username === c.username);   // author-only, no moderation edit
     const cLikes = Array.isArray(c.likes) ? c.likes : [];
     const cLiked = !!(me && cLikes.includes(me.username));
     const row = document.createElement('div');
@@ -1554,7 +1646,10 @@ function renderSocial(p) {
       `<span class="avatar sm">${avatarInner(meta)}</span>` +
       `<div class="c-body"><div class="c-head">` +
       `<button class="c-name">${esc(meta.displayName || c.username)}</button>` +
-      `<span class="mono dim c-time">@${esc(c.username)} · ${timeAgo(c.created)}</span>` +
+      `<span class="mono dim c-time">@${esc(c.username)} · ${timeAgo(c.created)}` +
+        (c.edited ? `<span class="c-edited"> · (edited)</span>` : '') +
+      `</span>` +
+      (canEdit ? `<button class="mono dim c-edit" type="button" title="Edit comment">EDIT</button>` : '') +
       (me ? `<button class="c-like${cLiked ? ' on' : ''}" title="Like comment" aria-pressed="${cLiked ? 'true' : 'false'}">` +
         `<span class="heart">${cLiked ? '♥' : '♡'}</span>` +
         (cLikes.length ? `<span class="c-like-count">${cLikes.length}</span>` : '') +
@@ -1567,6 +1662,7 @@ function renderSocial(p) {
     row.querySelector('.c-name').addEventListener('click', () => { closeProject(); openPeople(c.username); });
     if (me) row.querySelector('.c-like').addEventListener('click', () => likeComment(p, c));
     if (canDel) row.querySelector('.c-del').addEventListener('click', () => deleteComment(p, c.id));
+    if (canEdit) row.querySelector('.c-edit').addEventListener('click', () => editComment(p, c, row));
     const replyBtn = row.querySelector('.c-reply');
     if (replyBtn) replyBtn.addEventListener('click', () => startReply(c.username, c.id));
     return row;
@@ -1672,6 +1768,57 @@ async function deleteComment(p, cid) {
     syncPostSocial(p);
     renderSocial(p);
   } catch (e) { toast(String(e.message || 'COULD NOT DELETE').toUpperCase()); }
+}
+/* author-only in-place edit: swap the comment's text line for a tiny textarea
+   with SAVE + CANCEL. SAVE PUTs the new text, updates the local comment (text +
+   edited stamp) and re-renders; CANCEL just re-renders the row as it was. */
+function editComment(p, c, row) {
+  if (!me || me.username !== c.username) return;
+  const textEl = row.querySelector('.c-text');
+  if (!textEl || row.querySelector('.c-edit-form')) return;   // one editor at a time
+  const form = document.createElement('form');
+  form.className = 'c-edit-form';
+  const ta = document.createElement('textarea');
+  ta.maxLength = 500;
+  ta.rows = 2;
+  ta.value = c.text;
+  const actions = document.createElement('div');
+  actions.className = 'c-edit-actions';
+  const save = document.createElement('button');
+  save.type = 'submit';
+  save.className = 'mono c-edit-save';
+  save.textContent = 'SAVE';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'mono dim c-edit-cancel';
+  cancel.textContent = 'CANCEL';
+  actions.appendChild(save);
+  actions.appendChild(cancel);
+  form.appendChild(ta);
+  form.appendChild(actions);
+  textEl.replaceWith(form);
+  ta.focus();
+  const pos = ta.value.length;
+  ta.setSelectionRange(pos, pos);
+  cancel.addEventListener('click', () => renderSocial(p));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = ta.value.trim();
+    if (!text) { toast('WRITE SOMETHING FIRST'); return; }
+    if (text === c.text) { renderSocial(p); return; }   // no-op edit, skip the round trip
+    save.disabled = true;
+    try {
+      const updated = await api.call('PUT', `/api/photos/${p.postId}/comments/${c.id}`, { text });
+      c.text = updated.text;
+      c.edited = updated.edited;
+      syncPostSocial(p);
+      renderSocial(p);
+      toast('COMMENT UPDATED');
+    } catch (err) {
+      save.disabled = false;
+      toast(String(err.message || 'COULD NOT EDIT').toUpperCase());
+    }
+  });
 }
 /* toggle a heart on one comment: optimistic flip of c.likes, same pattern as
    the photo like button, then re-render so the count + fill update. */
@@ -2341,6 +2488,7 @@ const communityEmptyEl = document.getElementById('community-empty');
 const communityChip = document.getElementById('community-chip');
 const inviteToolsBtn = document.getElementById('invite-tools-btn');
 const recapChip = document.getElementById('recap-chip');
+const posterChip = document.getElementById('poster-chip');
 const communityRoomEl = document.getElementById('community-room');
 const communityAdminEl = document.getElementById('community-admin');
 const recapOverlayEl = document.getElementById('recap-overlay');
@@ -2366,6 +2514,7 @@ let adminOpen = false;
 let recapOpen = false;
 let lastRecap = null;          // last recap payload rendered - used for the shareable card
 let recapCardBusy = false;     // guards against overlapping card builds
+let mosaicPosterBusy = false;  // guards against overlapping sphere-poster builds
 let showOnboardingAfterEnter = false;
 
 function overlayOpen() {
@@ -2524,6 +2673,7 @@ function updateCommunityHud() {
     if (tourChip) tourChip.hidden = true;
     if (surpriseChip) surpriseChip.hidden = true;
     recapChip.hidden = true;
+    if (posterChip) posterChip.hidden = true;
     return;
   }
   communityChip.hidden = false;
@@ -2539,6 +2689,9 @@ function updateCommunityHud() {
   // surprise-me appears and disappears in lockstep with the tour chip: it needs
   // at least two photos to jump between and shares the entry / mobile rules.
   if (surpriseChip) surpriseChip.hidden = recapChip.hidden || pool.length < 2;
+  // the sphere-poster chip shares the recap chip's entry / mobile placement, but
+  // needs at least one photo on the wall to have anything to tile into a poster.
+  if (posterChip) posterChip.hidden = recapChip.hidden || pool.length < 1;
 }
 
 // neutral fallback tint used on the public landing / entry screens and whenever
@@ -3571,6 +3724,24 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/* share a rendered keepsake image via the Web Share API when available (with a
+   file), else fall back to a plain download; guarded so a cancel/failure never
+   leaves a dangling toast. shared by the album sheet + sphere poster. */
+async function shareOrDownloadBlob(blob, filename, title, text, savingToast) {
+  const file = new File([blob], filename, { type: 'image/png' });
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title, text });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;  // user dismissed the share sheet
+      // any other failure: fall through to a download so the keepsake is not lost
+    }
+  }
+  downloadBlob(blob, filename);
+  toast(savingToast);
+}
+
 /* download the currently open album as a contact-sheet PNG */
 async function downloadAlbumSheet() {
   const built = await buildAlbumSheet();
@@ -3585,19 +3756,58 @@ async function downloadAlbumSheet() {
 async function shareAlbumSheet() {
   const built = await buildAlbumSheet();
   if (!built) return;
-  const file = new File([built.blob], `${built.base}-sheet.png`, { type: 'image/png' });
   const title = String((viewingAlbum && viewingAlbum.album && viewingAlbum.album.name) || 'Album');
-  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title, text: `${title} - a shared album` });
-      return;
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;  // user dismissed the share sheet
-      // any other failure: fall through to a download so the keepsake is not lost
-    }
+  await shareOrDownloadBlob(built.blob, `${built.base}-sheet.png`, title, `${title} - a shared album`, 'SAVING ALBUM SHEET');
+}
+
+/* ---- shareable sphere mosaic poster --------------------------------------
+   Builds a single keepsake image of the WHOLE community wall (every photo,
+   tiled) via renderMosaicPoster in js/mosaic.js, reusing the same coverDraw +
+   loadCors + toBlob + download / Web-Share pipeline as the recap card and album
+   sheet. The heavy drawing lives in the module (dependency-free, fed the shared
+   canvas helpers); this pair just guards the busy UI and hands off the blob. */
+
+/* build the poster, toggling the busy UI; returns { blob, base } or null */
+async function buildMosaicPoster() {
+  if (mosaicPosterBusy) return null;
+  if (!currentCommunity || !communityPosts.length) {
+    toast('NO PHOTOS TO SAVE YET');
+    return null;
   }
-  downloadBlob(built.blob, `${built.base}-sheet.png`);
-  toast('SAVING ALBUM SHEET');
+  mosaicPosterBusy = true;
+  const buildingEl = document.getElementById('poster-building');
+  if (buildingEl) buildingEl.hidden = false;
+  if (posterChip) posterChip.disabled = true;
+  try {
+    const canvas = await renderMosaicPoster(currentCommunity, communityPosts,
+      { coverDraw, loadCors, mediaSrc, sanitizeBase });
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('render failed');
+    return { blob, base: sanitizeBase(currentCommunity.name, 'sphere') };
+  } catch {
+    toast('COULD NOT BUILD POSTER');
+    return null;
+  } finally {
+    if (buildingEl) buildingEl.hidden = true;
+    if (posterChip) posterChip.disabled = false;
+    mosaicPosterBusy = false;
+  }
+}
+
+/* download the whole sphere as a mosaic-poster PNG */
+async function downloadMosaicPoster() {
+  const built = await buildMosaicPoster();
+  if (!built) return;
+  downloadBlob(built.blob, `${built.base}-sphere.png`);
+  toast('SAVING SPHERE POSTER');
+}
+
+/* share the poster via the Web Share API when available, else download it */
+async function shareMosaicPoster() {
+  const built = await buildMosaicPoster();
+  if (!built) return;
+  const title = String((currentCommunity && currentCommunity.name) || 'Our Sphere');
+  await shareOrDownloadBlob(built.blob, `${built.base}-sphere.png`, title, `${title} - our shared memory sphere`, 'SAVING SPHERE POSTER');
 }
 
 let csCoverData;
@@ -3867,6 +4077,11 @@ document.getElementById('invite-join').addEventListener('click', () => joinInvit
 communityChip.addEventListener('click', openCommunityRoom);
 inviteToolsBtn.addEventListener('click', openAdminPanel);
 recapChip.addEventListener('click', () => openRecap());
+if (posterChip) posterChip.addEventListener('click', () => {
+  // prefer the native share sheet where it exists (mobile), else save the file
+  if (navigator.share) shareMosaicPoster();
+  else downloadMosaicPoster();
+});
 document.getElementById('recap-close').addEventListener('click', () => { closeRecap(); clearRouteKind('recap'); });
 document.getElementById('recap-download').addEventListener('click', downloadRecapCard);
 document.getElementById('recap-share').addEventListener('click', () => copyRoute(communityRoute('recap')));

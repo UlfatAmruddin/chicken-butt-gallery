@@ -709,6 +709,27 @@ async function handleApi(req, res, pathname, params) {
       return send(res, 200, { count: comment.likes.length, liked: i < 0 });
     }
 
+    // edit a comment's own text in place. author-only (moderation stays with
+    // DELETE), keeping likes/replies/created intact and stamping comment.edited.
+    if (req.method === 'PUT' && seg[1] === 'photos' && seg[2] && seg[3] === 'comments' && seg[4] && !seg[5]) {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const post = posts.find(p => p.id === seg[2]);
+      if (!post || !Array.isArray(post.comments)) return send(res, 404, { error: 'No such comment.' });
+      const c = findCommunity(post.communityId);
+      if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
+      const comment = post.comments.find(x => x.id === seg[4]);
+      if (!comment) return send(res, 404, { error: 'No such comment.' });
+      if (comment.username !== auth.user.username) return send(res, 403, { error: 'You can only edit your own comment.' });
+      const b = JSON.parse(await readBody(req, 64 * 1024));
+      const text = clean(b.text, 500);
+      if (!text) return send(res, 400, { error: 'Write something first.' });
+      comment.text = text;
+      comment.edited = Date.now();
+      saveJSON('posts.json', posts);
+      return send(res, 200, comment);
+    }
+
     if (req.method === 'PUT' && seg[1] === 'photos' && seg[2] && !seg[3]) {
       const auth = requireAuth(req, res);
       if (!auth) return;
