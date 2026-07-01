@@ -7,6 +7,10 @@ export function loadImage(src) {
   if (imageCache.has(src)) return imageCache.get(src);
   const promise = new Promise(resolve => {
     const img = new Image();
+    // request CORS so cross-origin (Supabase) photos don't taint the card
+    // canvas - a tainted CanvasTexture fails to upload to WebGL. Same-origin
+    // images are unaffected; Supabase public objects send CORS headers.
+    img.crossOrigin = 'anonymous';
     img.decoding = 'async';
     img.onload = () => resolve(img);
     // do not cache the failure: drop the entry so a later call can retry after

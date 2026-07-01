@@ -894,44 +894,41 @@ textarea { resize: vertical; }
   color: #cfcfcf;
 }
 #me-chip:hover { color: #fff; }
-#community-chip {
+/* HUD chip row: one flex container so chips pack and adapt to label length
+   instead of each carrying a hand-tuned left offset that drifts when a label
+   or the community name changes. */
+#hud-chips {
   position: fixed; top: 34px; left: 88px; z-index: 10;
+  display: flex; align-items: center; gap: 18px;
+  max-width: calc(100vw - 120px);
+}
+#hud-chips > * { flex: none; }   /* chips keep their label width; no shrink */
+#community-chip {
   color: #fff;
-  max-width: 220px;
+  flex: 0 1 auto; min-width: 0; max-width: 220px;   /* only the name may ellipsis */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#invite-tools-btn {
-  position: fixed; top: 34px; left: 324px; z-index: 10;
-  color: #cfcfcf;
-}
+#invite-tools-btn { color: #cfcfcf; }
 #tour-chip {
-  position: fixed; top: 34px; left: 404px; z-index: 10;
   color: #cfcfcf;
   /* keep it playful: a faint arrow the eye reads as "press play" */
   transition: color .2s ease;
 }
 #tour-chip::before { content: "\25B8\00A0"; color: #7fdcff; }   /* small play triangle */
-#recap-chip {
-  position: fixed; top: 34px; left: 472px; z-index: 10;
-  color: #cfcfcf;
-}
+#recap-chip { color: #cfcfcf; }
 #poster-chip {
-  position: fixed; top: 34px; left: 544px; z-index: 10;
   color: #cfcfcf;
   transition: color .2s ease;
 }
 #poster-chip::before { content: "\25A6\00A0"; color: #7fdcff; }   /* small tiled-grid mark */
 #poster-chip:disabled { color: #6f6f6f; cursor: default; }
-/* poster build indicator - a faint HUD note after the chip cluster while it
-   renders (sits past surprise-chip so it never overlaps the chips) */
+/* poster build indicator - a faint HUD note that flows after the chips */
 #poster-building {
-  position: fixed; top: 34px; left: 728px; z-index: 10;
   color: #8e8e8e; white-space: nowrap;
 }
 #surprise-chip {
-  position: fixed; top: 34px; left: 636px; z-index: 10;
   color: #cfcfcf;
   /* keep it playful: a faint spark the eye reads as "random / delight" */
   transition: color .2s ease;
