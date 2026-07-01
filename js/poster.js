@@ -10,7 +10,7 @@ import { toast } from './toast.js';
    Supabase Storage do not taint the canvas (toBlob would throw SecurityError).
    Public buckets send ACAO; a broken URL resolves to null so callers fall back
    to a placeholder instead of aborting the whole card. */
-function loadCors(src) {
+export function loadCors(src) {
   return new Promise(res => {
     const im = new Image();
     im.crossOrigin = 'anonymous';
