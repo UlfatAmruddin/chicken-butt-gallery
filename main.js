@@ -1,5 +1,5 @@
 import * as THREE from './js/vendor/three.module.js';
-import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw } from './js/util.js';
+import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw, drawShareBackdrop, fitHeadingFont } from './js/util.js';
 import { LOW_POWER, IMAGE_LOAD_CONCURRENCY } from './js/config.js';
 import { makeCardTexture, setCardAccent } from './js/textures.js';
 import { api } from './js/api.js';
@@ -3440,17 +3440,8 @@ async function renderRecapCard(r) {
   const x = c.getContext('2d');
   const pad = 72;
 
-  // backdrop - flat near-black with a soft top glow, matching the dark UI
-  x.fillStyle = '#050505';
-  x.fillRect(0, 0, W, H);
-  const glow = x.createRadialGradient(W / 2, -120, 80, W / 2, 320, 900);
-  glow.addColorStop(0, 'rgba(28,28,28,0.9)');
-  glow.addColorStop(1, 'rgba(5,5,5,0)');
-  x.fillStyle = glow;
-  x.fillRect(0, 0, W, H);
-  x.strokeStyle = '#1f1f1f';
-  x.lineWidth = 2;
-  x.strokeRect(24.5, 24.5, W - 49, H - 49);
+  // shared share-card chrome: backdrop + soft glow + inset border
+  drawShareBackdrop(x, W, H);
 
   // header - kicker + community name + date range
   x.textAlign = 'left';
@@ -3460,12 +3451,7 @@ async function renderRecapCard(r) {
 
   const name = String((r.community && r.community.name) || (currentCommunity && currentCommunity.name) || 'OUR SPHERE').toUpperCase();
   x.fillStyle = '#ffffff';
-  let nameSize = 92;
-  x.font = `600 ${nameSize}px Inter`;
-  while (x.measureText(name).width > W - pad * 2 && nameSize > 44) {
-    nameSize -= 4;
-    x.font = `600 ${nameSize}px Inter`;
-  }
+  fitHeadingFont(x, name, W - pad * 2, 92, 44);
   x.fillText(name, pad, pad + 108);
 
   x.fillStyle = '#9a9a9a';
@@ -3603,17 +3589,8 @@ async function renderAlbumContactSheet(album, posts) {
   const x = c.getContext('2d');
   const pad = 72;
 
-  // backdrop - flat near-black with a soft top glow, matching the recap card
-  x.fillStyle = '#050505';
-  x.fillRect(0, 0, W, H);
-  const glow = x.createRadialGradient(W / 2, -120, 80, W / 2, 320, 900);
-  glow.addColorStop(0, 'rgba(28,28,28,0.9)');
-  glow.addColorStop(1, 'rgba(5,5,5,0)');
-  x.fillStyle = glow;
-  x.fillRect(0, 0, W, H);
-  x.strokeStyle = '#1f1f1f';
-  x.lineWidth = 2;
-  x.strokeRect(24.5, 24.5, W - 49, H - 49);
+  // shared share-card chrome: backdrop + soft glow + inset border
+  drawShareBackdrop(x, W, H);
 
   // header - kicker + album name (auto-shrink) + community name + count/owner
   x.textAlign = 'left';
@@ -3624,12 +3601,7 @@ async function renderAlbumContactSheet(album, posts) {
 
   const name = String(album.name || 'ALBUM').toUpperCase();
   x.fillStyle = '#ffffff';
-  let nameSize = 84;
-  x.font = `600 ${nameSize}px Inter`;
-  while (x.measureText(name).width > W - pad * 2 && nameSize > 40) {
-    nameSize -= 4;
-    x.font = `600 ${nameSize}px Inter`;
-  }
+  fitHeadingFont(x, name, W - pad * 2, 84, 40);
   x.fillText(name, pad, pad + 104);
 
   const community = String((currentCommunity && currentCommunity.name) || 'OUR SPHERE').toUpperCase();

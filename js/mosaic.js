@@ -13,6 +13,8 @@
    toBlob(). All text is app-generated / trusted and drawn to the canvas (never
    innerHTML). Returns the canvas; the caller handles toBlob + download / share. */
 
+import { drawShareBackdrop, fitHeadingFont } from './util.js';
+
 const MAX_CELLS = 100;   // hard cap on tiled covers; the rest roll into '+K MORE'
 
 /* build the sphere poster canvas.
@@ -27,17 +29,8 @@ export async function renderMosaicPoster(community, posts, helpers) {
   const x = c.getContext('2d');
   const pad = 72;
 
-  // backdrop - flat near-black with a soft top glow, matching the recap card
-  x.fillStyle = '#050505';
-  x.fillRect(0, 0, W, H);
-  const glow = x.createRadialGradient(W / 2, -120, 80, W / 2, 320, 900);
-  glow.addColorStop(0, 'rgba(28,28,28,0.9)');
-  glow.addColorStop(1, 'rgba(5,5,5,0)');
-  x.fillStyle = glow;
-  x.fillRect(0, 0, W, H);
-  x.strokeStyle = '#1f1f1f';
-  x.lineWidth = 2;
-  x.strokeRect(24.5, 24.5, W - 49, H - 49);
+  // shared share-card chrome: backdrop + soft glow + inset border
+  drawShareBackdrop(x, W, H);
 
   // header - kicker + community name (auto-shrink) + photos/members sub-line
   x.textAlign = 'left';
@@ -48,12 +41,7 @@ export async function renderMosaicPoster(community, posts, helpers) {
 
   const name = String((community && community.name) || 'OUR SPHERE').toUpperCase();
   x.fillStyle = '#ffffff';
-  let nameSize = 92;
-  x.font = `600 ${nameSize}px Inter`;
-  while (x.measureText(name).width > W - pad * 2 && nameSize > 44) {
-    nameSize -= 4;
-    x.font = `600 ${nameSize}px Inter`;
-  }
+  fitHeadingFont(x, name, W - pad * 2, 92, 44);
   x.fillText(name, pad, pad + 108);
 
   const total = posts.length;

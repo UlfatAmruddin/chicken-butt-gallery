@@ -43,6 +43,35 @@ export function coverDraw(ctx, img, r) {
   ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, r.x, r.y, r.w, r.h);
 }
 
+/* Shared share-card chrome: the near-black backdrop + soft top glow + thin
+   inset border used by the recap card, album contact sheet, and mosaic poster.
+   Kept identical in one place so the three keepsake images can never drift. */
+export function drawShareBackdrop(ctx, W, H) {
+  ctx.fillStyle = '#050505';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, -120, 80, W / 2, 320, 900);
+  glow.addColorStop(0, 'rgba(28,28,28,0.9)');
+  glow.addColorStop(1, 'rgba(5,5,5,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#1f1f1f';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(24.5, 24.5, W - 49, H - 49);
+}
+
+/* Pick the largest heading size that fits `text` within maxW, stepping down by
+   4px from startPx to a minPx floor. Sets ctx.font (so the caller can fillText
+   straight after) and returns the chosen size. */
+export function fitHeadingFont(ctx, text, maxW, startPx, minPx, weight = 600, family = 'Inter') {
+  let size = startPx;
+  ctx.font = `${weight} ${size}px ${family}`;
+  while (ctx.measureText(text).width > maxW && size > minPx) {
+    size -= 4;
+    ctx.font = `${weight} ${size}px ${family}`;
+  }
+  return size;
+}
+
 /* render a horizontal thumbnail filmstrip into `container` from an ordered
    `items` list, marking item #activeIndex active and scrolling it into view.
    Each item may carry {heroSrc|src, title}. Clicking a thumb calls onPick(i).
