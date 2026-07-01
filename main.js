@@ -3532,8 +3532,10 @@ async function shareMosaicPoster() {
 }
 
 let csCoverData;
-async function openAdminPanel() {
+let adminReturn = null;   // where the admin back button returns to (null = the sphere you came from)
+async function openAdminPanel(returnTo = null) {
   if (!currentCommunity || !(isCommunityAdmin() || isAdminProfile())) return;
+  adminReturn = returnTo;
   closeCommunityRoom();
   closeRecap();
   adminOpen = true;
@@ -3757,9 +3759,9 @@ document.getElementById('admin-invite-create').addEventListener('click', async (
 });
 document.getElementById('room-close').addEventListener('click', closeCommunityRoom);
 document.getElementById('room-switch').addEventListener('click', () => showCommunityHub());
-document.getElementById('room-admin-open').addEventListener('click', openAdminPanel);
+document.getElementById('room-admin-open').addEventListener('click', () => openAdminPanel(openCommunityRoom));
 document.getElementById('room-prompt-upload').addEventListener('click', openUpload);
-document.getElementById('admin-close').addEventListener('click', () => { closeAdminPanel(); openCommunityRoom(); });
+document.getElementById('admin-close').addEventListener('click', () => { closeAdminPanel(); if (adminReturn) adminReturn(); });
 
 function openOnboarding() {
   if (!currentCommunity) return;
@@ -3796,7 +3798,7 @@ document.getElementById('invite-home').addEventListener('click', () => showLandi
 document.getElementById('invite-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login', pendingInviteCode ? { type: 'invite', code: pendingInviteCode } : null); });
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
 communityChip.addEventListener('click', openCommunityRoom);
-inviteToolsBtn.addEventListener('click', openAdminPanel);
+inviteToolsBtn.addEventListener('click', () => openAdminPanel());
 recapChip.addEventListener('click', () => openRecap());
 if (posterChip) posterChip.addEventListener('click', () => {
   // prefer the native share sheet where it exists (mobile), else save the file
