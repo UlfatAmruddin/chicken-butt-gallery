@@ -644,6 +644,26 @@ async function handleApi(req, res, pathname, params) {
       return send(res, 200, { ok: true });
     }
 
+    // a heart on a single comment, mirroring the photo-like route. likes live in
+    // comment.likes = [usernames]; toggling notifies the comment author on a new like.
+    if (req.method === 'POST' && seg[1] === 'photos' && seg[2] && seg[3] === 'comments' && seg[4] && seg[5] === 'like') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const post = posts.find(p => p.id === seg[2]);
+      if (!post || !Array.isArray(post.comments)) return send(res, 404, { error: 'No such comment.' });
+      const c = findCommunity(post.communityId);
+      if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
+      const comment = post.comments.find(x => x.id === seg[4]);
+      if (!comment) return send(res, 404, { error: 'No such comment.' });
+      if (!Array.isArray(comment.likes)) comment.likes = [];
+      const name = auth.user.username;
+      const i = comment.likes.indexOf(name);
+      if (i >= 0) comment.likes.splice(i, 1); else comment.likes.push(name);
+      saveJSON('posts.json', posts);
+      if (i < 0) addNotification(comment.username, post.communityId, 'comment_like', name, post.id, { title: post.title, text: comment.text });
+      return send(res, 200, { count: comment.likes.length, liked: i < 0 });
+    }
+
     if (req.method === 'PUT' && seg[1] === 'photos' && seg[2] && !seg[3]) {
       const auth = requireAuth(req, res);
       if (!auth) return;

@@ -326,7 +326,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .entry-mode #community-chip,
 .entry-mode #invite-tools-btn,
 .entry-mode #tour-chip,
-.entry-mode #recap-chip {
+.entry-mode #recap-chip,
+.entry-mode #surprise-chip {
   opacity: 0;
   pointer-events: none;
 }
@@ -490,6 +491,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .c-name { color: #fff; font-weight: 500; font-size: 14px; }
 .c-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c-time { font-size: 10px; }
+.c-like {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
+  color: #6a6a6a; font-size: 11px; line-height: 1; transition: color .2s, transform .15s;
+}
+.c-like + .c-del { margin-left: 8px; }
+.c-like .heart { font-size: 14px; color: #5d5d5d; transition: color .2s; }
+.c-like .c-like-count { font: 500 11px "Space Mono", monospace; color: #8a8a8a; }
+.c-like:hover { color: #fff; }
+.c-like:hover .heart { color: #a05a66; }
+.c-like:active { transform: scale(0.9); }
+.c-like.on .heart { color: #e0506a; }
+.c-like.on .c-like-count { color: #d8d8d8; }
 .c-del { margin-left: auto; color: #5d5d5d; font-size: 11px; }
 .c-del:hover { color: #e05a5a; }
 .c-text { color: #c9c9c9; font-size: 15px; line-height: 1.55; margin-top: 3px; word-wrap: break-word; }
@@ -601,8 +614,15 @@ textarea { resize: vertical; }
   position: fixed; top: 34px; left: 472px; z-index: 10;
   color: #cfcfcf;
 }
-#community-chip:hover, #invite-tools-btn:hover, #tour-chip:hover, #recap-chip:hover { color: #fff; }
-#tour-chip:hover::before { color: #b8ecff; }
+#surprise-chip {
+  position: fixed; top: 34px; left: 544px; z-index: 10;
+  color: #cfcfcf;
+  /* keep it playful: a faint spark the eye reads as "random / delight" */
+  transition: color .2s ease;
+}
+#surprise-chip::before { content: "\2726\00A0"; color: #7fdcff; }   /* small sparkle */
+#community-chip:hover, #invite-tools-btn:hover, #tour-chip:hover, #recap-chip:hover, #surprise-chip:hover { color: #fff; }
+#tour-chip:hover::before, #surprise-chip:hover::before { color: #b8ecff; }
 
 /* ---------- notifications inbox ---------- */
 #notif-btn {
@@ -1449,7 +1469,7 @@ textarea { resize: vertical; }
   .hero-actions .pill-white, .hero-actions .ghost-pill, .hub-actions .pill-white, .hub-actions .ghost-pill {
     width: 100%;
   }
-  #community-chip, #invite-tools-btn, #tour-chip, #recap-chip { display: none; }
+  #community-chip, #invite-tools-btn, #tour-chip, #recap-chip, #surprise-chip { display: none; }
   /* keep the 4-item nav pill on one line on narrow screens */
   .pill-nav button { padding: 12px 16px; font-size: 14px; }
   .room-grid, .admin-grid { grid-template-columns: 1fr; }
@@ -1481,7 +1501,9 @@ textarea { resize: vertical; }
 .flat-card .fc-media,
 .mini-photo .mp-media,
 .album-photos .pp-tile,
-#profile-photos .pp-tile {
+#profile-photos .pp-tile,
+.atlas-cover,
+.atlas-thumb {
   background-color: #111;
   background-image: linear-gradient(100deg, #131313 30%, #1d1d1d 50%, #131313 70%);
   background-size: 200% 100%;
@@ -1493,12 +1515,36 @@ textarea { resize: vertical; }
 .flat-card .fc-img,
 .album-photos img,
 #profile-photos img,
-.mini-photo img {
+.mini-photo img,
+.atlas-cover img,
+.atlas-thumb img {
   background: transparent;
 }
 /* album covers are a background-image on the tile itself (not a layered
    <img>), so they are intentionally left OUT of the shimmer group above;
-   shimmering them would zoom + slide the real cover photo forever */
+   shimmering them would zoom + slide the real cover photo forever. the
+   atlas cover/thumb DO carry layered <img>s, so they shimmer safely. */
+
+/* ---------- refined empty states ---------- */
+/* the shared "nothing here yet" paragraphs across the grids. give them
+   calm, deliberate typography and breathing room so an empty room reads
+   as intentional quiet rather than a broken or half-loaded view. */
+/* no display override here: the global [hidden] { display:none !important }
+   rule keeps these toggling correctly, so we only restyle the visible note. */
+#flat-empty,
+#atlas-empty,
+#albums-empty,
+#profile-no-photos,
+#profile-no-albums,
+#recap-members-empty {
+  color: #6f6f6f;
+  font-size: 12px;
+  line-height: 1.7;
+  letter-spacing: .18em;
+  padding: 46px 4px;
+  max-width: 640px;
+  text-transform: uppercase;
+}
 
 /* ---------- unified hover-lift + press micro-interactions ---------- */
 /* consistent crisp press on the shared button families */
@@ -1553,6 +1599,7 @@ a:focus-visible,
 .place-chip:focus-visible,
 .reaction:focus-visible,
 .like-btn:focus-visible,
+.c-like:focus-visible,
 .save-btn:focus-visible,
 .notif-row:focus-visible,
 .pick-album-row:focus-visible,
@@ -1579,7 +1626,9 @@ a:focus-visible,
   .flat-card .fc-media,
   .mini-photo .mp-media,
   .album-photos .pp-tile,
-  #profile-photos .pp-tile {
+  #profile-photos .pp-tile,
+  .atlas-cover,
+  .atlas-thumb {
     animation: none;
     background-image: none;
   }
@@ -1606,6 +1655,7 @@ a:focus-visible,
   .likers-av:hover, .likers-av:active,
   .reaction:hover, .reaction:active,
   .like-btn:active,
+  .c-like:active,
   .notif-row:active,
   .pick-album-row:active,
   .ap-btn:active,

@@ -936,6 +936,30 @@ function stopTour() {
 if (tourChip) tourChip.addEventListener('click', startSphereTour);
 
 /* ============================================================
+   SURPRISE ME - one tap spins the sphere to a random photo and pops it.
+   Pure composition of existing primitives: it picks a random project from
+   the live pool (preferring one other than the photo already open) and hands
+   off to focusCardOnSphere(), which closes any overlay, spins the sphere and
+   pulses the card. Zero new backend surface; cannot break existing flows.
+   ============================================================ */
+const surpriseChip = document.getElementById('surprise-chip');
+
+function surpriseMe() {
+  if (!currentCommunity) { toast('OPEN A COMMUNITY FIRST'); return; }
+  if (pool.length < 1) { toast('NO PHOTOS TO SURPRISE YET'); return; }
+  // avoid landing on the photo already open when there is another to choose.
+  const openId = (detail.style.display === 'block' && detailProject) ? detailProject.postId : null;
+  let choices = pool;
+  if (openId && pool.length > 1) choices = pool.filter(p => p.postId !== openId);
+  const pick = choices[Math.floor(Math.random() * choices.length)];
+  if (!pick || !pick.postId) return;
+  focusCardOnSphere(pick.postId);
+  toast('A RANDOM MEMORY');
+}
+
+if (surpriseChip) surpriseChip.addEventListener('click', surpriseMe);
+
+/* ============================================================
    DETAIL IMAGE ZOOM + PAN (desktop wheel/drag/dblclick + touch pinch)
    ============================================================ */
 const dHero = document.querySelector('.d-hero');
@@ -1485,6 +1509,8 @@ function renderSocial(p) {
   p.comments.slice().sort((a, b) => a.created - b.created).forEach(c => {
     const meta = userMeta[c.username] || { username: c.username, displayName: c.username };
     const canDel = me && (me.username === c.username || me.username === p.username || isAdminProfile() || isCommunityAdmin());
+    const cLikes = Array.isArray(c.likes) ? c.likes : [];
+    const cLiked = !!(me && cLikes.includes(me.username));
     const row = document.createElement('div');
     row.className = 'comment';
     row.innerHTML =
@@ -1492,10 +1518,15 @@ function renderSocial(p) {
       `<div class="c-body"><div class="c-head">` +
       `<button class="c-name">${esc(meta.displayName || c.username)}</button>` +
       `<span class="mono dim c-time">@${esc(c.username)} · ${timeAgo(c.created)}</span>` +
+      (me ? `<button class="c-like${cLiked ? ' on' : ''}" title="Like comment" aria-pressed="${cLiked ? 'true' : 'false'}">` +
+        `<span class="heart">${cLiked ? '♥' : '♡'}</span>` +
+        (cLikes.length ? `<span class="c-like-count">${cLikes.length}</span>` : '') +
+        `</button>` : '') +
       (canDel ? `<button class="c-del" title="Delete comment">✕</button>` : '') +
       `</div><div class="c-text"></div></div>`;
     linkifyComment(row.querySelector('.c-text'), c.text);
     row.querySelector('.c-name').addEventListener('click', () => { closeProject(); openPeople(c.username); });
+    if (me) row.querySelector('.c-like').addEventListener('click', () => likeComment(p, c));
     if (canDel) row.querySelector('.c-del').addEventListener('click', () => deleteComment(p, c.id));
     dCommentsEl.appendChild(row);
   });
@@ -1592,6 +1623,32 @@ async function deleteComment(p, cid) {
     syncPostSocial(p);
     renderSocial(p);
   } catch (e) { toast(String(e.message || 'COULD NOT DELETE').toUpperCase()); }
+}
+/* toggle a heart on one comment: optimistic flip of c.likes, same pattern as
+   the photo like button, then re-render so the count + fill update. */
+async function likeComment(p, c) {
+  if (!p || !me || !c) return;
+  if (!Array.isArray(c.likes)) c.likes = [];
+  const i = c.likes.indexOf(me.username);
+  if (i >= 0) c.likes.splice(i, 1); else c.likes.push(me.username);
+  syncPostSocial(p);
+  renderSocial(p);
+  try {
+    const r = await api.call('POST', `/api/photos/${p.postId}/comments/${c.id}/like`);
+    // reconcile with the server's truth in case of a race
+    const has = c.likes.includes(me.username);
+    if (r.liked && !has) c.likes.push(me.username);
+    else if (!r.liked && has) c.likes.splice(c.likes.indexOf(me.username), 1);
+    syncPostSocial(p);
+    renderSocial(p);
+  } catch (e) {
+    // revert on failure
+    const has = c.likes.includes(me.username);
+    if (has) c.likes.splice(c.likes.indexOf(me.username), 1); else c.likes.push(me.username);
+    syncPostSocial(p);
+    renderSocial(p);
+    toast(String(e.message || 'COULD NOT LIKE').toUpperCase());
+  }
 }
 dLikeBtn.addEventListener('click', async () => {
   const p = detailProject;
@@ -1786,6 +1843,13 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 't' || e.key === 'T') && !typing && !modalOpen && !shortcutsOpen()
       && tourChip && !tourChip.hidden && !tourActive) {
     e.preventDefault(); startSphereTour(); return;
+  }
+  // "R" surprises with a random photo. guarded exactly like the tour key: never
+  // while typing / in a modal, and only when the surprise chip is live (which
+  // already encodes "community active, enough photos, not entry / mobile").
+  if ((e.key === 'r' || e.key === 'R') && !typing && !modalOpen && !shortcutsOpen()
+      && surpriseChip && !surpriseChip.hidden) {
+    e.preventDefault(); surpriseMe(); return;
   }
   if (e.key === 'Escape') {
     // the shortcuts cheat sheet sits above everything - fold it first
@@ -2298,6 +2362,7 @@ function notifLabel(n) {
   }
   if (n.type === 'comment') return `@${n.actor} commented on ${title}`;
   if (n.type === 'mention') return `@${n.actor} mentioned you on ${title}`;
+  if (n.type === 'comment_like') return `@${n.actor} liked your comment on ${title}`;
   return `@${n.actor} on ${title}`;
 }
 
@@ -2306,7 +2371,7 @@ function renderNotifications() {
   notifications.forEach(n => {
     const row = document.createElement('button');
     row.className = 'notif-row' + (n.read ? '' : ' unread');
-    const preview = (n.type === 'comment' || n.type === 'mention') && n.text ? `"${esc(n.text)}" / ` : '';
+    const preview = (n.type === 'comment' || n.type === 'mention' || n.type === 'comment_like') && n.text ? `"${esc(n.text)}" / ` : '';
     row.innerHTML =
       `<span class="notif-main"><strong>${esc(notifLabel(n))}</strong>` +
       `<small class="mono dim">${preview}${timeAgo(n.created)}</small></span>` +
@@ -2377,6 +2442,7 @@ function updateCommunityHud() {
     communityChip.hidden = true;
     inviteToolsBtn.hidden = true;
     if (tourChip) tourChip.hidden = true;
+    if (surpriseChip) surpriseChip.hidden = true;
     recapChip.hidden = true;
     return;
   }
@@ -2390,6 +2456,9 @@ function updateCommunityHud() {
   // the tour needs at least two photos to loop through; hide it otherwise so
   // it never becomes a dead button (mirrors the recap chip's placement rules).
   if (tourChip) tourChip.hidden = recapChip.hidden || pool.length < 2;
+  // surprise-me appears and disappears in lockstep with the tour chip: it needs
+  // at least two photos to jump between and shares the entry / mobile rules.
+  if (surpriseChip) surpriseChip.hidden = recapChip.hidden || pool.length < 2;
 }
 
 // neutral fallback tint used on the public landing / entry screens and whenever
