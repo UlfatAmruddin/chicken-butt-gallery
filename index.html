@@ -120,6 +120,7 @@
 </div>
 <button id="community-chip" class="mono" hidden>COMMUNITY</button>
 <button id="invite-tools-btn" class="mono" hidden>Invite</button>
+<button id="tour-chip" class="mono" hidden title="Play a hands-free tour of the most loved photos (T)">Tour</button>
 <button id="recap-chip" class="mono" hidden>Recap</button>
 <button class="lets-talk" id="lets-talk">Let's Talk</button>
 
@@ -268,6 +269,7 @@
     <img class="cinema-img" alt="">
   </div>
   <div class="cinema-meta mono" aria-live="polite"></div>
+  <div class="tour-caption mono" id="tour-caption" hidden aria-hidden="true"></div>
   <button class="cinema-ctl cinema-prev mono" type="button" aria-label="Previous photo">&#8249;</button>
   <button class="cinema-ctl cinema-next mono" type="button" aria-label="Next photo">&#8250;</button>
   <div class="cinema-bar">
@@ -470,6 +472,15 @@
       </section>
     </div>
     <section class="room-panel">
+      <div class="section-head">
+        <h2 class="mono dim">PULSE</h2>
+        <span id="room-pulse-window" class="mono dim"></span>
+      </div>
+      <div id="room-pulse-reactions" class="pulse-reactions"></div>
+      <div id="room-pulse-photos" class="recap-strip pulse-strip"></div>
+      <p id="room-pulse-empty" class="mono dim" hidden>NOTHING IS RESONATING YET. LIKE AND REACT TO FILL THIS IN.</p>
+    </section>
+    <section class="room-panel">
       <h2 class="mono dim">RECENT MOMENTS</h2>
       <div id="room-feed" class="activity-feed"></div>
       <p id="room-feed-empty" class="mono dim">NO ACTIVITY YET.</p>
@@ -488,6 +499,11 @@
       <p class="mono dim" id="recap-range"></p>
       <h1 id="recap-title"></h1>
       <p class="mono dim" id="recap-sub"></p>
+    </div>
+    <div class="recap-actions">
+      <button id="recap-download" class="mono share-btn" type="button">SAVE AS CARD&nbsp;&#8615;</button>
+      <button id="recap-share" class="mono share-btn" type="button">SHARE RECAP&nbsp;&#8599;</button>
+      <span id="recap-building" class="mono dim" hidden>BUILDING CARD&hellip;</span>
     </div>
     <div class="recap-stats" id="recap-stats"></div>
     <section class="room-panel">

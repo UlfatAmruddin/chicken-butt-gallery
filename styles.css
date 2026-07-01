@@ -309,6 +309,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .entry-mode #notif-btn,
 .entry-mode #community-chip,
 .entry-mode #invite-tools-btn,
+.entry-mode #tour-chip,
 .entry-mode #recap-chip {
   opacity: 0;
   pointer-events: none;
@@ -573,11 +574,19 @@ textarea { resize: vertical; }
   position: fixed; top: 34px; left: 324px; z-index: 10;
   color: #cfcfcf;
 }
-#recap-chip {
+#tour-chip {
   position: fixed; top: 34px; left: 404px; z-index: 10;
   color: #cfcfcf;
+  /* keep it playful: a faint arrow the eye reads as "press play" */
+  transition: color .2s ease;
 }
-#community-chip:hover, #invite-tools-btn:hover, #recap-chip:hover { color: #fff; }
+#tour-chip::before { content: "\25B8\00A0"; color: #7fdcff; }   /* small play triangle */
+#recap-chip {
+  position: fixed; top: 34px; left: 472px; z-index: 10;
+  color: #cfcfcf;
+}
+#community-chip:hover, #invite-tools-btn:hover, #tour-chip:hover, #recap-chip:hover { color: #fff; }
+#tour-chip:hover::before { color: #b8ecff; }
 
 /* ---------- notifications inbox ---------- */
 #notif-btn {
@@ -960,6 +969,20 @@ textarea { resize: vertical; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
 }
+/* Sphere Tour narration - sits just above the cinema meta pill so the two
+   read as one stacked caption. accent + label mark it as the guided tour. */
+.tour-caption {
+  position: absolute; left: 50%; bottom: 62px; transform: translateX(-50%);
+  z-index: 2; max-width: 80vw;
+  font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: #7fdcff; text-align: center;
+  background: rgba(0,0,0,.4);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  padding: 5px 14px; border-radius: 999px; border: 1px solid rgba(127,220,255,0.28);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.tour-caption::before { content: "\25B8\00A0"; }   /* small play triangle */
 .cinema-ctl {
   color: #cfcfcf;
   background: rgba(12,12,12,0.55);
@@ -1109,6 +1132,23 @@ textarea { resize: vertical; }
 }
 #recap-range { letter-spacing: .14em; }
 #recap-sub { color: #a9a9a9; font-size: 15px; line-height: 1.6; max-width: 720px; }
+.recap-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 18px;
+  margin: 0 0 22px;
+}
+.recap-actions .share-btn {
+  display: inline-flex; align-items: center;
+  transition: color .2s, letter-spacing .2s;
+}
+.recap-actions .share-btn:hover { color: #fff; letter-spacing: .04em; }
+.recap-actions .share-btn:disabled { opacity: .5; cursor: default; letter-spacing: normal; }
+#recap-building[hidden] { display: none; }
+#recap-building {
+  display: inline-flex; align-items: center;
+  animation: recapPulse 1.1s ease-in-out infinite;
+}
+@keyframes recapPulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #recap-building { animation: none; } }
 .recap-stats {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
   margin-bottom: 16px;
@@ -1136,6 +1176,20 @@ textarea { resize: vertical; }
 .recap-member { cursor: pointer; }
 .recap-member:hover { border-color: #6a6a6a; }
 .recap-member .avatar.sm { flex: none; }
+
+/* ---- community pulse (server-aggregated "what is resonating right now") ---- */
+#room-pulse-window { letter-spacing: .14em; font-size: 12px; }
+.pulse-reactions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.pulse-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: 999px;
+  background: #141414; border: 1px solid #242424;
+}
+.pulse-chip.zero { opacity: .5; }
+.pulse-chip .pc-emoji { font-size: 16px; filter: grayscale(0.35); }
+.pulse-chip .pc-count { font-size: 13px; color: #d8d8d8; }
+.pulse-chip.zero .pc-count { color: #8a8a8a; }
+.pulse-strip:empty { display: none; }
 
 /* ---- "find on sphere" overlay pin (flat cards + room pinned tiles) ---- */
 .locate-pin {
@@ -1299,11 +1353,12 @@ textarea { resize: vertical; }
   .hero-actions .pill-white, .hero-actions .ghost-pill, .hub-actions .pill-white, .hub-actions .ghost-pill {
     width: 100%;
   }
-  #community-chip, #invite-tools-btn, #recap-chip { display: none; }
+  #community-chip, #invite-tools-btn, #tour-chip, #recap-chip { display: none; }
   /* keep the 4-item nav pill on one line on narrow screens */
   .pill-nav button { padding: 12px 16px; font-size: 14px; }
   .room-grid, .admin-grid { grid-template-columns: 1fr; }
   .recap-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recap-actions { gap: 14px 18px; }
   .recap-hero { padding: 18px; }
   .room-hero { min-height: 260px; padding: 18px; }
   .admin-row, .activity-row { align-items: flex-start; }

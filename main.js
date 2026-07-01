@@ -15,6 +15,7 @@ let pendingAuthAction = null;
 let communityPosts = [];     // posts fetched from the server
 let pool = [];               // community posts -> what the wall shows
 let communityActivity = [];
+let communityPulse = null;
 let communityPrompts = [];
 let savedIds = new Set();     // postIds the logged-in user has privately saved here
 
@@ -55,6 +56,10 @@ function buildPool() {
       return bp - ap || b.created - a.created;
     })
     .map(postToProject);
+  // if a Sphere Tour is running, keep the live pool in love-score order across
+  // rebuilds (e.g. an admin pins a photo mid-tour). the freshly built normal
+  // order becomes the restore target; buildTour() re-ranks the live pool.
+  if (tourActive) { tourSavedPool = pool; pool = buildTour(); }
 }
 
 /* ============================================================
@@ -652,6 +657,8 @@ function fillDetail(p) {
   // slideshow both funnel through fillDetail). cinema is assigned during
   // module init, well before any user action can call fillDetail.
   if (cinema) cinema.refresh();
+  // keep the tour narration in step with whatever photo just loaded.
+  if (tourActive) updateTourCaption();
 }
 
 let detailFromOverlay = false;
@@ -774,6 +781,8 @@ function stopSlideshow() {
   }
   if (slideLabel) slideLabel.textContent = 'PLAY';
   if (slideGlyph) slideGlyph.textContent = GLYPH_PLAY;
+  // a definitive stop ends any running tour and drops back to normal pool order.
+  stopTour();
 }
 
 /* temporary pause (hover / zoom / comment focus) - keeps playing state so it
@@ -839,6 +848,92 @@ function updateSlideAvailability() {
   slideBtn.hidden = !usable;
   if (!usable && slideshow.playing) stopSlideshow();
 }
+
+/* ============================================================
+   SPHERE TOUR - one tap turns the community into a curated, narrated
+   auto-cinema of its most loved photos. It composes existing primitives
+   only: it re-ranks the live pool by love score, opens the top photo,
+   lifts into Cinema mode, and hands the wheel to the slideshow. Exiting
+   Cinema / the detail page (Escape / close) restores the normal pool.
+   ============================================================ */
+const tourChip = document.getElementById('tour-chip');
+const tourCaption = document.getElementById('tour-caption');
+// while active, holds the pool order we replaced so it can be restored on exit.
+let tourActive = false;
+let tourSavedPool = null;
+
+/* love score for one project, mirroring loveScore() in lib/helpers.js:
+   hearts (likes) + every other reaction + comments. */
+function projectLoveScore(p) {
+  const likes = Array.isArray(p.likes) ? p.likes.length : 0;
+  const comments = Array.isArray(p.comments) ? p.comments.length : 0;
+  let reactions = 0;
+  if (p.reactions && typeof p.reactions === 'object') {
+    Object.values(p.reactions).forEach(list => { if (Array.isArray(list)) reactions += list.length; });
+  }
+  return likes + reactions + comments;
+}
+
+/* rank a copy of the current pool by love score, newest-first as the tie-break
+   and fallback (matches the recap's ordering). returns a fresh array. */
+function buildTour() {
+  return pool
+    .map(p => ({ p, score: projectLoveScore(p) }))
+    .sort((a, b) => b.score - a.score || (b.p.created || 0) - (a.p.created || 0))
+    .map(({ p }) => p);
+}
+
+/* refresh the narration caption for the photo now on screen. plain text only,
+   set via textContent so nothing user-typed needs escaping. */
+function updateTourCaption() {
+  if (!tourCaption) return;
+  if (!tourActive || !detailProject) { tourCaption.hidden = true; return; }
+  const idx = pool.findIndex(p => p.postId === detailProject.postId);
+  const score = projectLoveScore(detailProject);
+  const pos = idx >= 0 ? `${idx + 1} OF ${pool.length}` : '';
+  const love = `${score} LOVE`;
+  tourCaption.textContent = ['MOST LOVED', pos, love].filter(Boolean).join('  ·  ');
+  tourCaption.hidden = false;
+}
+
+function startSphereTour() {
+  if (tourActive) return;
+  if (!currentCommunity) { toast('OPEN A COMMUNITY FIRST'); return; }
+  if (pool.length < 2) { toast('NOT ENOUGH PHOTOS TO TOUR YET'); return; }
+  const ranked = buildTour();
+  if (!ranked.length) return;
+  // swap the live pool for the ranked order; stepPhoto / slideshow iterate the
+  // pool, so this is all it takes to drive them in love-score order. the saved
+  // reference is restored verbatim on stopTour() (nothing rebuilds pool mid-tour).
+  tourSavedPool = pool;
+  pool = ranked;
+  tourActive = true;
+  openDetailFor(ranked[0]);
+  updateTourCaption();
+  // lift into Cinema for the full-screen feel, then let the slideshow drive.
+  if (cinema) cinema.open();
+  if (!slideshow.playing) startSlideshow();
+  // a subtle rise-in on the narration caption (skipped for reduced motion).
+  if (tourCaption && !reduceMotion) {
+    gsap.fromTo(tourCaption, { opacity: 0, y: 10 },
+      { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' });
+  }
+  toast('SPHERE TOUR');
+}
+
+/* end the tour and put the normal pool order back. safe to call unconditionally
+   from the shared exit paths (closeProject / lifecycle resets). */
+function stopTour() {
+  if (!tourActive) return;
+  tourActive = false;
+  if (tourSavedPool) { pool = tourSavedPool; tourSavedPool = null; }
+  if (tourCaption) {
+    gsap.set(tourCaption, { clearProps: 'opacity,transform' });
+    tourCaption.hidden = true; tourCaption.textContent = '';
+  }
+}
+
+if (tourChip) tourChip.addEventListener('click', startSphereTour);
 
 /* ============================================================
    DETAIL IMAGE ZOOM + PAN (desktop wheel/drag/dblclick + touch pinch)
@@ -1050,6 +1145,7 @@ function closeProject() {
   if (detail.style.display !== 'block') return;
   if (cinema && cinema.isOpen()) cinema.close();
   stopSlideshow();
+  stopTour();          // restore the normal pool order if a tour was running
   resetDetailZoom();
   cardsAnimating = true;
   markSceneDirty();
@@ -1648,6 +1744,13 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'f' || e.key === 'F') && detailKeyOk && cinema && detailProject) {
     e.preventDefault(); cinema.toggle(); return;
   }
+  // "T" starts the Sphere Tour from anywhere inside a community. guarded like
+  // P/F (never while typing / in a modal) and only when the tour chip is live,
+  // which already encodes "community active, enough photos, not entry / mobile".
+  if ((e.key === 't' || e.key === 'T') && !typing && !modalOpen
+      && tourChip && !tourChip.hidden && !tourActive) {
+    e.preventDefault(); startSphereTour(); return;
+  }
   if (e.key === 'Escape') {
     // cinema mode sits on top of everything - fold it first
     if (cinema && cinema.isOpen()) { e.preventDefault(); cinema.close(); return; }
@@ -1996,6 +2099,10 @@ async function rebuildGallery() {
   applyFilter();
   updateEmptyWall();
   renderMemoryRibbon();
+  // refresh the community chips now that the pool is populated: the tour chip's
+  // visibility depends on pool.length, and enterCommunity runs its earlier
+  // updateCommunityHud() before this rebuild fills the pool.
+  updateCommunityHud();
   if (flatOpen) renderFlatView();
 }
 
@@ -2074,6 +2181,8 @@ let pendingInviteCode = '';
 let roomOpen = false;
 let adminOpen = false;
 let recapOpen = false;
+let lastRecap = null;          // last recap payload rendered - used for the shareable card
+let recapCardBusy = false;     // guards against overlapping card builds
 let showOnboardingAfterEnter = false;
 
 function overlayOpen() {
@@ -2226,6 +2335,7 @@ function updateCommunityHud() {
   if (!currentCommunity) {
     communityChip.hidden = true;
     inviteToolsBtn.hidden = true;
+    if (tourChip) tourChip.hidden = true;
     recapChip.hidden = true;
     return;
   }
@@ -2236,6 +2346,9 @@ function updateCommunityHud() {
   // recap is for everyone, but stays out of the entry screens and off mobile
   const narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
   recapChip.hidden = document.body.classList.contains('entry-mode') || narrow;
+  // the tour needs at least two photos to loop through; hide it otherwise so
+  // it never becomes a dead button (mirrors the recap chip's placement rules).
+  if (tourChip) tourChip.hidden = recapChip.hidden || pool.length < 2;
 }
 
 function setEntryMode(on) {
@@ -2249,6 +2362,7 @@ function hideEntryScreens() {
 }
 
 async function clearActiveCommunity() {
+  stopTour();   // reset tour state before the pool is rebuilt for the next room
   if (memoryRibbon) memoryRibbon.hidden = true;
   if (!currentCommunity && communityPosts.length === 0 && pool.length === 0) {
     updateCommunityHud();
@@ -2357,6 +2471,7 @@ async function enterCommunity(id, updateHash = true) {
     showAuth('login', { type: 'community', id });
     return false;
   }
+  stopTour();   // never let a tour's swapped pool leak across communities
   try {
     currentCommunity = await api.call('GET', '/api/communities/' + encodeURIComponent(id));
   } catch (e) {
@@ -2577,6 +2692,8 @@ async function loadCommunityExtras() {
   catch { communityPrompts = []; }
   try { communityActivity = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/activity`); }
   catch { communityActivity = []; }
+  try { communityPulse = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/pulse`); }
+  catch { communityPulse = null; }
 }
 
 async function refreshCurrentCommunity() {
@@ -2671,6 +2788,74 @@ function renderCommunityRoom() {
     feed.appendChild(row);
   });
   document.getElementById('room-feed-empty').hidden = communityActivity.length > 0;
+
+  renderCommunityPulse();
+}
+
+/* build one "doorway back to the sphere" photo tile shared by the recap and
+   pulse strips: cover image, a locate-pin when the card is on the sphere, the
+   title, and a mono sub-label (e.g. "@user / N LOVE"). onClick opens the photo. */
+function photoTile(tp, subLabel, onClick) {
+  const onSphere = postOnSphere(tp.id);
+  const tile = document.createElement('button');
+  tile.className = 'mini-photo recap-tile';
+  tile.innerHTML =
+    `<span class="mp-media">` +
+    `<img src="${esc(mediaSrc(tp.file))}" alt="${esc(tp.title || '')}">` +
+    (onSphere ? LOCATE_PIN_HTML : '') +
+    `</span>` +
+    `<span>${esc(tp.title || 'UNTITLED')}</span>` +
+    `<small class="mono dim recap-tile-sub">@${esc(tp.username || 'unknown')} / ${esc(subLabel)}</small>`;
+  tile.addEventListener('click', () => onClick(tp.id));
+  wireLocatePin(tile, tp.id);
+  return tile;
+}
+
+/* the community PULSE: a server-aggregated "what is resonating right now"
+   snapshot. The emoji breakdown uses the fixed EMOJI map (numbers + fixed
+   glyphs only, never user text), and each top-photo tile is a doorway back
+   to the sphere, reusing the mini-photo + wireLocatePin pattern. */
+function renderCommunityPulse() {
+  const reactionsWrap = document.getElementById('room-pulse-reactions');
+  const photosWrap = document.getElementById('room-pulse-photos');
+  const emptyEl = document.getElementById('room-pulse-empty');
+  const windowEl = document.getElementById('room-pulse-window');
+  if (!reactionsWrap || !photosWrap) return;
+  reactionsWrap.innerHTML = '';
+  photosWrap.innerHTML = '';
+  const pulse = communityPulse;
+  const reactions = (pulse && Array.isArray(pulse.reactions)) ? pulse.reactions : [];
+  const topPhotos = (pulse && Array.isArray(pulse.topPhotos)) ? pulse.topPhotos : [];
+
+  windowEl.textContent = pulse
+    ? (pulse.windowDays ? `LAST ${pulse.windowDays} DAYS` : 'ALL TIME')
+    : '';
+
+  reactions.forEach(r => {
+    if (!EMOJI[r.emoji]) return;
+    const chip = document.createElement('div');
+    chip.className = 'pulse-chip' + (r.count ? '' : ' zero');
+    chip.title = r.emoji.toUpperCase();
+    chip.innerHTML =
+      `<span class="pc-emoji">${EMOJI[r.emoji]}</span>` +
+      `<span class="pc-count mono">${esc(String(r.count || 0))}</span>`;
+    reactionsWrap.appendChild(chip);
+  });
+
+  topPhotos.forEach(tp => {
+    photosWrap.appendChild(photoTile(tp, `${tp.reactionCount || 0} REACT`, openPulsePhoto));
+  });
+
+  const hasPulse = reactions.some(r => r.count) || topPhotos.length > 0;
+  emptyEl.hidden = hasPulse;
+}
+
+/* a pulse photo tile is a doorway back into the sphere: prefer the local
+   cache so the detail view is fully wired, else spin the sphere to it. */
+function openPulsePhoto(postId) {
+  const post = communityPosts.find(p => p.id === postId);
+  if (post) openDetailFor(postToProject(post));
+  else focusCardOnSphere(postId);
 }
 
 function activityLabel(ev) {
@@ -2725,6 +2910,7 @@ function closeRecap() {
 
 function renderRecap(r) {
   if (!r) return;
+  lastRecap = r;
   document.getElementById('recap-title').textContent = (r.community && r.community.name) || currentCommunity.name;
   document.getElementById('recap-range').textContent = recapDateLabel(r.range);
   document.getElementById('recap-sub').textContent = 'A shared recap of everything we have built together.';
@@ -2747,19 +2933,7 @@ function renderRecap(r) {
   const strip = document.getElementById('recap-photos');
   strip.innerHTML = '';
   (r.topPhotos || []).forEach(tp => {
-    const onSphere = postOnSphere(tp.id);
-    const tile = document.createElement('button');
-    tile.className = 'mini-photo recap-tile';
-    tile.innerHTML =
-      `<span class="mp-media">` +
-      `<img src="${esc(mediaSrc(tp.file))}" alt="${esc(tp.title || '')}">` +
-      (onSphere ? LOCATE_PIN_HTML : '') +
-      `</span>` +
-      `<span>${esc(tp.title || 'UNTITLED')}</span>` +
-      `<small class="mono dim recap-tile-sub">@${esc(tp.username || 'unknown')} / ${esc(String(tp.loveScore || 0))} LOVE</small>`;
-    tile.addEventListener('click', () => openRecapPhoto(tp.id));
-    wireLocatePin(tile, tp.id);
-    strip.appendChild(tile);
+    strip.appendChild(photoTile(tp, `${tp.loveScore || 0} LOVE`, openRecapPhoto));
   });
   document.getElementById('recap-photos-empty').hidden = (r.topPhotos || []).length > 0;
 
@@ -2785,6 +2959,185 @@ function openRecapPhoto(postId) {
   const post = communityPosts.find(p => p.id === postId);
   if (post) openDetailFor(postToProject(post));
   else { clearRouteKind('recap'); focusCardOnSphere(postId); }
+}
+
+/* ---- shareable recap card -------------------------------------------------
+   Draws the last-loaded recap object to an offscreen portrait canvas in the
+   same Space Mono / Inter + coverDraw() aesthetic as the sphere card textures,
+   then hands back the canvas. Purely client-side; mosaic photos load CORS-enabled
+   so a Supabase-hosted top photo does not taint the canvas before toBlob().
+   All text is app-generated or comes from esc()'d-equivalent trusted fields
+   (drawn to canvas, never innerHTML). */
+async function renderRecapCard(r) {
+  const W = 1080, H = 1350;               // portrait share-card (4:5)
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const pad = 72;
+
+  // backdrop - flat near-black with a soft top glow, matching the dark UI
+  x.fillStyle = '#050505';
+  x.fillRect(0, 0, W, H);
+  const glow = x.createRadialGradient(W / 2, -120, 80, W / 2, 320, 900);
+  glow.addColorStop(0, 'rgba(28,28,28,0.9)');
+  glow.addColorStop(1, 'rgba(5,5,5,0)');
+  x.fillStyle = glow;
+  x.fillRect(0, 0, W, H);
+  x.strokeStyle = '#1f1f1f';
+  x.lineWidth = 2;
+  x.strokeRect(24.5, 24.5, W - 49, H - 49);
+
+  // header - kicker + community name + date range
+  x.textAlign = 'left';
+  x.fillStyle = '#8e8e8e';
+  x.font = '700 22px "Space Mono"';
+  x.fillText('SHARED RECAP', pad, pad + 8);
+
+  const name = String((r.community && r.community.name) || (currentCommunity && currentCommunity.name) || 'OUR SPHERE').toUpperCase();
+  x.fillStyle = '#ffffff';
+  let nameSize = 92;
+  x.font = `600 ${nameSize}px Inter`;
+  while (x.measureText(name).width > W - pad * 2 && nameSize > 44) {
+    nameSize -= 4;
+    x.font = `600 ${nameSize}px Inter`;
+  }
+  x.fillText(name, pad, pad + 108);
+
+  x.fillStyle = '#9a9a9a';
+  x.font = '400 24px "Space Mono"';
+  x.fillText(recapDateLabel(r.range).toUpperCase(), pad, pad + 152);
+
+  // stat grid - 2x2 boxed cells (photos / albums / members / prompts)
+  const stats = [
+    [r.photoCount, `PHOTO${r.photoCount === 1 ? '' : 'S'}`],
+    [r.albumCount, `ALBUM${r.albumCount === 1 ? '' : 'S'}`],
+    [r.memberCount, `MEMBER${r.memberCount === 1 ? '' : 'S'}`],
+    [r.promptCount, `PROMPT${r.promptCount === 1 ? '' : 'S'}`],
+  ];
+  const gridTop = pad + 200, gap = 16;
+  const cellW = (W - pad * 2 - gap) / 2, cellH = 150;
+  stats.forEach(([n, label], i) => {
+    const cx = pad + (i % 2) * (cellW + gap);
+    const cy = gridTop + Math.floor(i / 2) * (cellH + gap);
+    x.beginPath();
+    x.roundRect(cx, cy, cellW, cellH, 18);
+    x.fillStyle = '#0d0d0d'; x.fill();
+    x.strokeStyle = '#1f1f1f'; x.lineWidth = 1.5; x.stroke();
+    x.fillStyle = '#ffffff';
+    x.font = '600 64px Inter';
+    x.textBaseline = 'alphabetic';
+    x.fillText(String(n || 0), cx + 26, cy + 82);
+    x.fillStyle = '#8e8e8e';
+    x.font = '400 20px "Space Mono"';
+    x.fillText(String(label), cx + 26, cy + 118);
+  });
+
+  // most-loved mosaic - up to 4 covers in a row, drawn with coverDraw()
+  const mosaicTop = gridTop + cellH * 2 + gap + 56;
+  x.fillStyle = '#8e8e8e';
+  x.font = '700 22px "Space Mono"';
+  x.fillText('MOST LOVED', pad, mosaicTop);
+  const photos = (r.topPhotos || []).slice(0, 4);
+  const tileGap = 16;
+  const tileW = (W - pad * 2 - tileGap * 3) / 4;
+  const tileY = mosaicTop + 24, tileH = tileW;
+  // CORS-enabled load so top photos on Supabase Storage do not taint the
+  // canvas (toBlob would throw SecurityError). Public buckets send ACAO.
+  const loadCors = src => new Promise(res => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.decoding = 'async';
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+  const imgs = await Promise.all(photos.map(tp => loadCors(mediaSrc(tp.file))));
+  for (let i = 0; i < 4; i++) {
+    const tx = pad + i * (tileW + tileGap);
+    x.save();
+    x.beginPath();
+    x.roundRect(tx, tileY, tileW, tileH, 14);
+    x.clip();
+    x.fillStyle = '#141414';
+    x.fillRect(tx, tileY, tileW, tileH);
+    const img = imgs[i];
+    if (img) coverDraw(x, img, { x: tx, y: tileY, w: tileW, h: tileH });
+    x.restore();
+    x.strokeStyle = 'rgba(255,255,255,0.10)';
+    x.lineWidth = 1;
+    x.beginPath();
+    x.roundRect(tx + 0.5, tileY + 0.5, tileW - 1, tileH - 1, 14);
+    x.stroke();
+  }
+
+  // top members - short list of the most active contributors
+  let ty = tileY + tileH + 64;
+  const members = (r.topMembers || []).slice(0, 3);
+  if (members.length) {
+    x.fillStyle = '#8e8e8e';
+    x.font = '700 22px "Space Mono"';
+    x.fillText('MOST ACTIVE', pad, ty);
+    ty += 44;
+    members.forEach(m => {
+      const who = String(m.displayName || m.username || 'someone');
+      x.fillStyle = '#e8e8e8';
+      x.font = '500 30px Inter';
+      x.fillText(who, pad, ty);
+      const count = `${m.photoCount || 0} PHOTO${m.photoCount === 1 ? '' : 'S'}`;
+      x.fillStyle = '#7a7a7a';
+      x.font = '400 22px "Space Mono"';
+      x.textAlign = 'right';
+      x.fillText(count, W - pad, ty);
+      x.textAlign = 'left';
+      ty += 46;
+    });
+  }
+
+  // footer - brand line, matching the detail footer
+  x.fillStyle = '#6a6a6a';
+  x.font = '400 20px "Space Mono"';
+  x.fillText('CHICKEN BUTT GALLERY - A PRIVATE MEMORY SPHERE', pad, H - pad + 8);
+
+  return c;
+}
+
+/* build the recap card and trigger a PNG download via toBlob + object URL */
+async function downloadRecapCard() {
+  if (recapCardBusy) return;
+  if (!lastRecap || !(lastRecap.photoCount || (lastRecap.topPhotos || []).length)) {
+    toast('NO RECAP TO SAVE YET');
+    return;
+  }
+  recapCardBusy = true;
+  const buildingEl = document.getElementById('recap-building');
+  const dlBtn = document.getElementById('recap-download');
+  const shareBtn = document.getElementById('recap-share');
+  if (buildingEl) buildingEl.hidden = false;
+  if (dlBtn) dlBtn.disabled = true;
+  if (shareBtn) shareBtn.disabled = true;
+  try {
+    const canvas = await renderRecapCard(lastRecap);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('render failed');
+    const base = String((lastRecap.community && lastRecap.community.name) || (currentCommunity && currentCommunity.name) || 'recap')
+      .replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'recap';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${base}-recap.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('SAVING RECAP CARD');
+  } catch {
+    toast('COULD NOT BUILD CARD');
+  } finally {
+    if (buildingEl) buildingEl.hidden = true;
+    if (dlBtn) dlBtn.disabled = false;
+    if (shareBtn) shareBtn.disabled = false;
+    recapCardBusy = false;
+  }
 }
 
 let csCoverData;
@@ -3054,6 +3407,8 @@ communityChip.addEventListener('click', openCommunityRoom);
 inviteToolsBtn.addEventListener('click', openAdminPanel);
 recapChip.addEventListener('click', () => openRecap());
 document.getElementById('recap-close').addEventListener('click', () => { closeRecap(); clearRouteKind('recap'); });
+document.getElementById('recap-download').addEventListener('click', downloadRecapCard);
+document.getElementById('recap-share').addEventListener('click', () => copyRoute(communityRoute('recap')));
 
 /* ============================================================
    TOAST
