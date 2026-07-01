@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
 const {
-  send, readBody, authUser, createSession, tooManyAuthAttempts, hashPass,
+  send, readBody, authUser, createSession, tooManyAuthAttempts, tooManyWrites, hashPass,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
@@ -25,13 +25,20 @@ async function handleApi(req, res, pathname, params) {
   try {
     const seg = pathname.split('/').filter(Boolean);
 
+    // global per-IP throttle on mutating requests to blunt upload/comment spam
+    if (req.method !== 'GET' && req.method !== 'HEAD' && tooManyWrites(req)) {
+      return send(res, 429, { error: 'Too many requests. Slow down.' });
+    }
+
     if (req.method === 'POST' && pathname === '/api/register') {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const username = clean(b.username, 20).toLowerCase();
       const password = String(b.password || '');
       if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(res, 400, { error: 'Username must be 3-20 chars: letters, numbers, underscores.' });
-      if (password.length < 4) return send(res, 400, { error: 'Password must be at least 4 characters.' });
+      if (password.length < 8) return send(res, 400, { error: 'Password must be at least 8 characters.' });
+      // reserve the configured admin name(s) so they can't be claimed on a fresh instance
+      if (isAdminUsername(username)) return send(res, 409, { error: 'That username is taken.' });
       if (users[username]) return send(res, 409, { error: 'That username is taken.' });
       const salt = crypto.randomBytes(16).toString('hex');
       users[username] = {
@@ -917,4 +924,4 @@ http.createServer((req, res) => {
 
   if (pathname.startsWith('/api/')) { handleApi(req, res, pathname, u.searchParams); return; }
   serveStatic(req, res, pathname);
-}).listen(8173, () => console.log('serving at http://localhost:8173'));
+}).listen(8173, '127.0.0.1', () => console.log('serving at http://localhost:8173'));
