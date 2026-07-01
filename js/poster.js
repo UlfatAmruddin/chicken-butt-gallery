@@ -4,6 +4,7 @@
    poster lives in js/mosaic.js; all three use the shared canvas chrome in util.js.
    loadCors keeps Supabase-hosted photos from tainting the canvas before toBlob. */
 import { coverDraw, mediaSrc, drawShareBackdrop, fitHeadingFont, recapDateLabel } from './util.js';
+import { toast } from './toast.js';
 
 /* CORS-enabled image load shared by the share-card renderers so photos on
    Supabase Storage do not taint the canvas (toBlob would throw SecurityError).
@@ -220,4 +221,36 @@ export async function renderAlbumContactSheet(album, posts, communityName) {
   x.fillText('CHICKEN BUTT GALLERY - A PRIVATE MEMORY SPHERE', pad, H - pad + 8);
 
   return c;
+}
+
+/* download a blob as a file via an object URL + click */
+/* trigger a download of a blob under `filename` via an object URL */
+export function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* Web-Share the image where supported, else download it */
+/* share a rendered keepsake image via the Web Share API when available (with a
+   file), else fall back to a plain download; guarded so a cancel/failure never
+   leaves a dangling toast. shared by the album sheet + sphere poster. */
+export async function shareOrDownloadBlob(blob, filename, title, text, savingToast) {
+  const file = new File([blob], filename, { type: 'image/png' });
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title, text });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;  // user dismissed the share sheet
+      // any other failure: fall through to a download so the keepsake is not lost
+    }
+  }
+  downloadBlob(blob, filename);
+  toast(savingToast);
 }

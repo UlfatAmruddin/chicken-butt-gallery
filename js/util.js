@@ -114,3 +114,10 @@ export function recapDateLabel(range) {
   const last = new Date(range.last).toLocaleDateString();
   return first === last ? first : `${first} - ${last}`;
 }
+
+/* filename-safe slug for downloaded images */
+/* filename-safe slug shared by the recap + album-sheet download paths */
+export function sanitizeBase(name, fallback) {
+  return String(name || fallback)
+    .replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || fallback;
+}

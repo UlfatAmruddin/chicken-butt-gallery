@@ -1,6 +1,6 @@
 import * as THREE from './js/vendor/three.module.js';
-import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw, drawShareBackdrop, fitHeadingFont, recapDateLabel } from './js/util.js';
-import { loadCors, renderRecapCard, renderAlbumContactSheet } from './js/poster.js';
+import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw, drawShareBackdrop, fitHeadingFont, recapDateLabel, sanitizeBase } from './js/util.js';
+import { loadCors, renderRecapCard, renderAlbumContactSheet, downloadBlob, shareOrDownloadBlob } from './js/poster.js';
 import { LOW_POWER, IMAGE_LOAD_CONCURRENCY } from './js/config.js';
 import { makeCardTexture, setCardAccent } from './js/textures.js';
 import { api } from './js/api.js';
@@ -3395,12 +3395,6 @@ function openRecapPhoto(postId) {
   else { clearRouteKind('recap'); focusCardOnSphere(postId); }
 }
 
-/* filename-safe slug shared by the recap + album-sheet download paths */
-function sanitizeBase(name, fallback) {
-  return String(name || fallback)
-    .replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || fallback;
-}
-
 /* build the recap card and trigger a PNG download via toBlob + object URL */
 async function downloadRecapCard() {
   if (recapCardBusy) return;
@@ -3467,36 +3461,6 @@ async function buildAlbumSheet() {
     if (btn) btn.disabled = false;
     albumSheetBusy = false;
   }
-}
-
-/* trigger a download of a blob under `filename` via an object URL */
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/* share a rendered keepsake image via the Web Share API when available (with a
-   file), else fall back to a plain download; guarded so a cancel/failure never
-   leaves a dangling toast. shared by the album sheet + sphere poster. */
-async function shareOrDownloadBlob(blob, filename, title, text, savingToast) {
-  const file = new File([blob], filename, { type: 'image/png' });
-  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title, text });
-      return;
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;  // user dismissed the share sheet
-      // any other failure: fall through to a download so the keepsake is not lost
-    }
-  }
-  downloadBlob(blob, filename);
-  toast(savingToast);
 }
 
 /* download the currently open album as a contact-sheet PNG */
