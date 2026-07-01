@@ -3532,10 +3532,24 @@ async function shareMosaicPoster() {
 }
 
 let csCoverData;
-let adminReturn = null;   // where the admin back button returns to (null = the sphere you came from)
-async function openAdminPanel(returnTo = null) {
+/* A closure that re-opens whatever community view is showing right now, so a
+   back button can return the user to where they actually were rather than a
+   fixed destination. Derived from live view state (not wired per call site);
+   null means the sphere, the base view. Reusable by any overlay's back. */
+function currentViewRestorer() {
+  if (roomOpen) return openCommunityRoom;
+  if (recapOpen) return () => openRecap(false);
+  if (albumsOpen) return () => openAlbums(undefined, false);
+  if (peopleOpen) return () => openPeople(undefined, false);
+  if (atlasOpen) return openAtlas;
+  if (flatOpen) return () => openFlatView();
+  return null;
+}
+
+let adminReturn = null;   // restorer for the view to return to when admin closes
+async function openAdminPanel() {
   if (!currentCommunity || !(isCommunityAdmin() || isAdminProfile())) return;
-  adminReturn = returnTo;
+  adminReturn = currentViewRestorer();   // remember the actual current view
   closeCommunityRoom();
   closeRecap();
   adminOpen = true;
@@ -3759,7 +3773,7 @@ document.getElementById('admin-invite-create').addEventListener('click', async (
 });
 document.getElementById('room-close').addEventListener('click', closeCommunityRoom);
 document.getElementById('room-switch').addEventListener('click', () => showCommunityHub());
-document.getElementById('room-admin-open').addEventListener('click', () => openAdminPanel(openCommunityRoom));
+document.getElementById('room-admin-open').addEventListener('click', openAdminPanel);
 document.getElementById('room-prompt-upload').addEventListener('click', openUpload);
 document.getElementById('admin-close').addEventListener('click', () => { closeAdminPanel(); if (adminReturn) adminReturn(); });
 
@@ -3798,7 +3812,7 @@ document.getElementById('invite-home').addEventListener('click', () => showLandi
 document.getElementById('invite-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login', pendingInviteCode ? { type: 'invite', code: pendingInviteCode } : null); });
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
 communityChip.addEventListener('click', openCommunityRoom);
-inviteToolsBtn.addEventListener('click', () => openAdminPanel());
+inviteToolsBtn.addEventListener('click', openAdminPanel);
 recapChip.addEventListener('click', () => openRecap());
 if (posterChip) posterChip.addEventListener('click', () => {
   // prefer the native share sheet where it exists (mobile), else save the file
