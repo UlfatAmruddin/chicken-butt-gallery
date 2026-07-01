@@ -328,6 +328,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 #back-btn:hover { color: #fff; }
 #d-client-top { color: #6f6f6f; }
 
+.d-nav { display: flex; gap: 10px; align-items: center; }
+.d-nav button {
+  color: #cfcfcf; font-size: 12px;
+  padding: 8px 16px;
+  border: 1px solid #2c2c2c; border-radius: 999px;
+  transition: border-color .2s, color .2s, background .2s;
+}
+.d-nav button:hover { color: #fff; border-color: #4a4a4a; background: rgba(38,38,38,0.6); }
+
 #d-title {
   font-size: clamp(54px, 9.2vw, 158px);
   font-weight: 600; letter-spacing: -0.035em; line-height: 0.96;
@@ -689,6 +698,7 @@ textarea { resize: vertical; }
 #album-actions { display: inline-flex; gap: 20px; }
 .share-btn { color: #cfcfcf; }
 .share-btn:hover { color: #fff; }
+.dl-btn { margin-left: -4px; }
 #profile-share, #album-share { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
 #profile-share:hover, #album-share:hover { color: #fff; }
 
@@ -699,6 +709,9 @@ textarea { resize: vertical; }
 }
 .flat-toggle { display: flex; gap: 8px; }
 .flat-toggle .circle-btn { width: 42px; height: 42px; position: static; }
+.flat-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 24px; }
+.flat-bar .search { flex: 1; min-width: 200px; max-width: 520px; margin: 0; }
+.flat-bar select { width: auto; flex: none; background: #0e0e0e; border: 1px solid #2c2c2c; border-radius: 999px; padding: 14px 22px; cursor: pointer; }
 .flat-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .flat-card { text-align: left; cursor: pointer; background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 12px; overflow: hidden; transition: border-color .2s, transform .2s; }
 .flat-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }

@@ -36,6 +36,7 @@ function postToProject(p) {
     postId: p.id,
     pinned: !!p.pinned,
     promptId: p.promptId || '',
+    created: p.created || 0,
     likes: Array.isArray(p.likes) ? p.likes : [],
     comments: Array.isArray(p.comments) ? p.comments : [],
   };
@@ -510,6 +511,9 @@ function fillDetail(p) {
   pinBtn.hidden = !canPin;
   pinBtn.textContent = p.pinned ? 'UNPIN PHOTO' : 'PIN PHOTO';
   document.getElementById('d-edit-form').hidden = true;
+  const navHidden = pool.length <= 1;
+  document.getElementById('d-prev').hidden = navHidden;
+  document.getElementById('d-next').hidden = navHidden;
   if (p.community) {
     dEls.clientTop.textContent = `@${p.username} - VIEW PROFILE ↗`;
     dEls.clientTop.style.textDecoration = 'underline';
@@ -538,6 +542,35 @@ function openDetailFor(project, updateHash = true) {
   fillDetail(project);
   showDetail();
 }
+
+/* step to the previous (-1) or next (+1) photo in the pool, wrapping around */
+function stepPhoto(dir) {
+  if (!detailProject || !detailProject.postId) return;
+  const idx = pool.findIndex((p) => p.postId === detailProject.postId);
+  if (idx < 0) return;
+  const n = pool.length;
+  if (n <= 1) return;
+  const target = pool[((idx + dir) % n + n) % n];
+  if (!target) return;
+  // if opened by zooming a sphere card, release the sphere now so closing
+  // later does not leave the gallery frozen / zoomed in.
+  if (!detailFromOverlay && sel) {
+    gsap.to(gal, { others: 1, duration: 0.6 });
+    gsap.set(sel, { pop: 0 });
+    gsap.to(camera, {
+      fov: zoomState.target, duration: 0.6, ease: 'power3.inOut',
+      onUpdate: () => camera.updateProjectionMatrix(),
+      onComplete: () => { zoomState.current = camera.fov; },
+    });
+    sel = null;
+    ui.locked = false;
+    canvas.style.cursor = 'grab';
+    markSceneDirty();
+  }
+  openDetailFor(target);
+}
+document.getElementById('d-prev').addEventListener('click', () => stepPhoto(-1));
+document.getElementById('d-next').addEventListener('click', () => stepPhoto(1));
 
 function openProject(card) {
   if (ui.locked) return;
@@ -792,6 +825,18 @@ dCommentForm.addEventListener('submit', async (e) => {
   } catch (e) { toast(String(e.message || 'COULD NOT POST').toUpperCase()); }
 });
 window.addEventListener('keydown', (e) => {
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && detail.style.display === 'block') {
+    const ae = document.activeElement;
+    const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+    const modalOpen = !uploadModal.hidden || !albumModal.hidden
+      || !pickAlbumModal.hidden || !addPhotosModal.hidden;
+    if (!typing && !modalOpen) {
+      e.preventDefault();
+      stepPhoto(e.key === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
+  }
   if (e.key === 'Escape') {
     if (!uploadModal.hidden) closeUpload();
     else if (!albumModal.hidden) closeAlbumModal();
@@ -899,8 +944,33 @@ const flatWrap = document.getElementById('flat-grid-wrap');
 const flatEmpty = document.getElementById('flat-empty');
 const flatGridBtn = document.getElementById('flat-grid');
 const flatListBtn = document.getElementById('flat-list');
+const flatSearchEl = document.getElementById('fv-search');
+const flatSortEl = document.getElementById('fv-sort');
 let flatOpen = false;
 let flatMode = 'grid';
+let flatQuery = '';
+let flatSort = 'new';
+
+function filterSortFlat() {
+  const q = flatQuery.trim().toLowerCase();
+  let list = pool.slice();
+  if (q) {
+    list = list.filter(p => {
+      const tags = Array.isArray(p.tags) ? p.tags.join(' ') : '';
+      const hay = `${p.title || ''} ${p.username || ''} ${p.caption || ''} ${tags} ${p.cat || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  if (flatSort === 'old') {
+    list.sort((a, b) => (a.created || 0) - (b.created || 0));
+  } else if (flatSort === 'likes') {
+    list.sort((a, b) => (b.likes ? b.likes.length : 0) - (a.likes ? a.likes.length : 0));
+  } else if (flatSort === 'comments') {
+    list.sort((a, b) => (b.comments ? b.comments.length : 0) - (a.comments ? a.comments.length : 0));
+  }
+  // 'new' keeps pool order (already pinned-first, newest-first)
+  return list;
+}
 
 function setFlatMode(mode) {
   flatMode = mode === 'list' ? 'list' : 'grid';
@@ -913,8 +983,10 @@ function setFlatMode(mode) {
 
 function renderFlatView() {
   flatWrap.innerHTML = '';
-  flatEmpty.hidden = pool.length > 0;
-  pool.forEach(p => {
+  const list = filterSortFlat();
+  flatEmpty.hidden = list.length > 0;
+  flatEmpty.textContent = (flatQuery.trim() && pool.length) ? 'NO PHOTOS MATCH YOUR SEARCH.' : 'NO PHOTOS YET.';
+  list.forEach(p => {
     const likes = Array.isArray(p.likes) ? p.likes.length : 0;
     const comments = Array.isArray(p.comments) ? p.comments.length : 0;
     const card = document.createElement('button');
@@ -947,6 +1019,8 @@ function openFlatView(mode = 'grid') {
 
 function closeFlatView() {
   if (!flatOpen) return;
+  flatQuery = '';
+  flatSearchEl.value = '';
   flatEl.setAttribute('aria-hidden', 'true');
   gsap.to(flatEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
@@ -957,6 +1031,8 @@ function closeFlatView() {
 document.getElementById('flat-close').addEventListener('click', closeFlatView);
 flatGridBtn.addEventListener('click', () => setFlatMode('grid'));
 flatListBtn.addEventListener('click', () => setFlatMode('list'));
+flatSearchEl.addEventListener('input', () => { flatQuery = flatSearchEl.value; renderFlatView(); });
+flatSortEl.addEventListener('change', () => { flatSort = flatSortEl.value; renderFlatView(); });
 
 const soundWrap = document.getElementById('sound-wrap');
 const volumeEl = document.getElementById('volume');
@@ -2690,6 +2766,27 @@ async function handleHashRoute() {
 window.addEventListener('hashchange', handleHashRoute);
 document.getElementById('d-share').addEventListener('click', () => {
   if (detailProject && detailProject.postId) copyRoute(photoRoute(detailProject.postId));
+});
+document.getElementById('d-download').addEventListener('click', () => {
+  const p = detailProject;
+  if (!p) return;
+  const url = p.heroSrc || p.src;
+  if (!url) return;
+  const extMatch = /\.(jpe?g|png|webp|gif)(?:[?#]|$)/i.exec(url);
+  const ext = extMatch ? extMatch[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
+  const name = (p.title || 'photo').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'photo';
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name + '.' + ext;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('SAVING PHOTO');
+  } catch {
+    window.open(url, '_blank');
+    toast('OPENING PHOTO');
+  }
 });
 document.getElementById('profile-share').addEventListener('click', () => {
   if (viewingProfile) copyRoute(profileRoute(viewingProfile.username));

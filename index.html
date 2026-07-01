@@ -162,6 +162,10 @@
   <div class="detail-inner">
     <div class="detail-top">
       <button id="back-btn" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
+      <div class="d-nav">
+        <button id="d-prev" class="mono" aria-label="Previous photo">PREV</button>
+        <button id="d-next" class="mono" aria-label="Next photo">NEXT</button>
+      </div>
       <button class="mono" id="d-client-top"></button>
     </div>
     <h1 id="d-title"><span id="d-title-inner"></span></h1>
@@ -204,6 +208,7 @@
         <button id="d-like" class="like-btn"><span class="heart">&hearts;</span> <span id="d-like-count">0</span></button>
         <span class="mono dim" id="d-comment-count">0 COMMENTS</span>
         <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
+        <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8615;</button>
       </div>
       <div id="d-comments" class="d-comments"></div>
       <form id="d-comment-form" class="d-comment-form">
@@ -362,6 +367,15 @@
       </div>
     </div>
     <h1 class="people-title">GALLERY</h1>
+    <div class="flat-bar">
+      <input id="fv-search" class="search mono" placeholder="SEARCH PHOTOS..." autocomplete="off">
+      <select id="fv-sort" class="mono" aria-label="Sort photos">
+        <option value="new">NEWEST</option>
+        <option value="old">OLDEST</option>
+        <option value="likes">MOST LIKED</option>
+        <option value="comments">MOST COMMENTED</option>
+      </select>
+    </div>
     <div id="flat-grid-wrap" class="flat-grid"></div>
     <p id="flat-empty" class="mono dim" hidden>NO PHOTOS YET.</p>
   </div>
