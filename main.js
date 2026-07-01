@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw } from './js/util.js';
 import { LOW_POWER, IMAGE_LOAD_CONCURRENCY } from './js/config.js';
-import { makeCardTexture } from './js/textures.js';
+import { makeCardTexture, setCardAccent } from './js/textures.js';
 import { api } from './js/api.js';
 import { toast } from './js/toast.js';
 import { loadImage } from './js/images.js';
@@ -577,7 +577,7 @@ canvas.addEventListener('pointercancel', endDrag);
 /* scroll wheel = zoom in/out (smoothly lerped FOV) */
 const zoomState = { target: FOV, current: FOV };
 window.addEventListener('wheel', (e) => {
-  if (ui.locked || overlayOpen()) return;
+  if (ui.locked || overlayOpen() || shortcutsOpen()) return;
   interacted = true;
   zoomState.target = THREE.MathUtils.clamp(zoomState.target + e.deltaY * 0.022, 26, 62);
   markSceneDirty();
@@ -1227,6 +1227,7 @@ function focusCardOnSphere(postId) {
   if (flatOpen) closeFlatView();
   if (albumsOpen) closeAlbums();
   if (peopleOpen) closePeople();
+  if (atlasOpen) closeAtlas();
   if (roomOpen) closeCommunityRoom();
   if (adminOpen) closeAdminPanel();
   if (recapOpen) closeRecap();
@@ -1723,6 +1724,33 @@ dCommentInput.addEventListener('blur', () => setTimeout(hideMentionMenu, 120));
 dCommentInput.addEventListener('focus', pauseSlideshow);
 dCommentInput.addEventListener('blur', resumeSlideshow);
 
+/* ============================================================
+   KEYBOARD SHORTCUTS OVERLAY - a discoverable cheat sheet for the
+   power-user keys (arrows / P / F / T / Esc). Press "?" to toggle it.
+   Purely additive: a hidden dialog plus focus management, nothing else.
+   ============================================================ */
+const shortcutsOverlay = document.getElementById('shortcuts-overlay');
+const shortcutsClose = document.getElementById('shortcuts-close');
+let shortcutsPrevFocus = null;
+function shortcutsOpen() { return shortcutsOverlay && !shortcutsOverlay.hidden; }
+function openShortcuts() {
+  if (!shortcutsOverlay || shortcutsOpen()) return;
+  shortcutsPrevFocus = document.activeElement;
+  shortcutsOverlay.hidden = false;
+  if (shortcutsClose) shortcutsClose.focus();
+}
+function closeShortcuts() {
+  if (!shortcutsOpen()) return;
+  shortcutsOverlay.hidden = true;
+  if (shortcutsPrevFocus && typeof shortcutsPrevFocus.focus === 'function') shortcutsPrevFocus.focus();
+  shortcutsPrevFocus = null;
+}
+if (shortcutsClose) shortcutsClose.addEventListener('click', closeShortcuts);
+if (shortcutsOverlay) shortcutsOverlay.addEventListener('click', (e) => {
+  // click on the dim backdrop (not the panel) closes it
+  if (e.target === shortcutsOverlay) closeShortcuts();
+});
+
 window.addEventListener('keydown', (e) => {
   // shared guard for the detail-page shortcuts (arrows / P / F): they only fire
   // with a photo open, and never while typing in a field or with a modal up.
@@ -1730,7 +1758,15 @@ window.addEventListener('keydown', (e) => {
   const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
   const modalOpen = !uploadModal.hidden || !albumModal.hidden
     || !pickAlbumModal.hidden || !addPhotosModal.hidden;
-  const detailKeyOk = detail.style.display === 'block' && !typing && !modalOpen;
+  const detailKeyOk = detail.style.display === 'block' && !typing && !modalOpen && !shortcutsOpen();
+  // "?" toggles the keyboard-shortcuts cheat sheet from anywhere (except while
+  // typing). it only listens for an otherwise-unused key, so it is safe to fire
+  // globally; Escape (handled below) folds it back before any other handling.
+  if (e.key === '?' && !typing) {
+    e.preventDefault();
+    if (shortcutsOpen()) closeShortcuts(); else openShortcuts();
+    return;
+  }
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && detailKeyOk) {
     e.preventDefault();
     stepPhoto(e.key === 'ArrowLeft' ? -1 : 1);
@@ -1747,12 +1783,14 @@ window.addEventListener('keydown', (e) => {
   // "T" starts the Sphere Tour from anywhere inside a community. guarded like
   // P/F (never while typing / in a modal) and only when the tour chip is live,
   // which already encodes "community active, enough photos, not entry / mobile".
-  if ((e.key === 't' || e.key === 'T') && !typing && !modalOpen
+  if ((e.key === 't' || e.key === 'T') && !typing && !modalOpen && !shortcutsOpen()
       && tourChip && !tourChip.hidden && !tourActive) {
     e.preventDefault(); startSphereTour(); return;
   }
   if (e.key === 'Escape') {
-    // cinema mode sits on top of everything - fold it first
+    // the shortcuts cheat sheet sits above everything - fold it first
+    if (shortcutsOpen()) { e.preventDefault(); closeShortcuts(); return; }
+    // cinema mode sits on top of everything - fold it next
     if (cinema && cinema.isOpen()) { e.preventDefault(); cinema.close(); return; }
     if (!uploadModal.hidden) closeUpload();
     else if (!albumModal.hidden) closeAlbumModal();
@@ -1762,6 +1800,7 @@ window.addEventListener('keydown', (e) => {
     else if (detail.style.display === 'block' && detailZoom.scale > 1.001) { e.preventDefault(); resetDetailZoom(); return; }
     else if (detail.style.display === 'block') closeProject();
     else if (recapOpen) { closeRecap(); clearRouteKind('recap'); }
+    else if (atlasOpen) closeAtlas();
     else if (flatOpen) closeFlatView();
     else if (albumsOpen) {
       if (!document.getElementById('album-page').hidden) showAlbumsList();
@@ -1846,10 +1885,11 @@ navBtns.forEach(b => b.addEventListener('click', () => {
   closeRecap();
   clearRouteKind('recap');
   setNav(view);
-  if (view === 'albums') { closeFlatView(); closePeople(); openAlbums(); }
-  else if (view === 'people') { closeFlatView(); closeAlbums(); openPeople(); }
-  else if (view === 'saved') { closeAlbums(); closePeople(); openSaved(); setRoute(communityRoute('saved')); }
-  else { closeFlatView(); closeAlbums(); closePeople(); }   // gallery
+  if (view === 'albums') { closeFlatView(); closePeople(); closeAtlas(); openAlbums(); }
+  else if (view === 'people') { closeFlatView(); closeAlbums(); closeAtlas(); openPeople(); }
+  else if (view === 'atlas') { closeFlatView(); closeAlbums(); closePeople(); openAtlas(); }
+  else if (view === 'saved') { closeAlbums(); closePeople(); closeAtlas(); openSaved(); setRoute(communityRoute('saved')); }
+  else { closeFlatView(); closeAlbums(); closePeople(); closeAtlas(); }   // gallery
 }));
 
 const viewBtns = [document.getElementById('view-grid'), document.getElementById('view-list')];
@@ -1943,6 +1983,7 @@ function openFlatView(mode = 'grid', saved = false) {
   if (!currentCommunity) { showCommunityHub(); return; }
   closePeople();
   closeAlbums();
+  closeAtlas();
   closeRecap();
   flatSavedOnly = !!saved;
   setNav(flatSavedOnly ? 'saved' : 'gallery');
@@ -2187,7 +2228,7 @@ let showOnboardingAfterEnter = false;
 
 function overlayOpen() {
   return !landingEl.hidden || !communityHubEl.hidden || !inviteViewEl.hidden || !authEl.hidden
-    || roomOpen || adminOpen || recapOpen || peopleOpen || albumsOpen || flatOpen || !uploadModal.hidden
+    || roomOpen || adminOpen || recapOpen || peopleOpen || albumsOpen || flatOpen || atlasOpen || !uploadModal.hidden
     || !communityModal.hidden || !enterInviteModal.hidden || !inviteToolsModal.hidden
     || !onboardingModal.hidden
     || !albumModal.hidden || !pickAlbumModal.hidden || !addPhotosModal.hidden
@@ -2351,8 +2392,31 @@ function updateCommunityHud() {
   if (tourChip) tourChip.hidden = recapChip.hidden || pool.length < 2;
 }
 
+// neutral fallback tint used on the public landing / entry screens and whenever
+// a room has no valid accent, so nothing depends on JS having run.
+const NEUTRAL_ACCENT = '#9a9a9a';
+
+/* Tint the page backdrop + card mats with the active community's accent so each
+   private room feels like its own space. Reads currentCommunity.accent, validates
+   it is a #rrggbb, and publishes it as CSS custom properties for styles.css and
+   forwards it to the texture module so newly built cards echo the tint. Falls back
+   to a neutral gray in entry-mode or when no valid accent is present. */
+function applyCommunityAmbient() {
+  const raw = currentCommunity && currentCommunity.accent;
+  const entry = document.body.classList.contains('entry-mode');
+  const hex = (!entry && /^#[0-9a-f]{6}$/i.test(raw || '')) ? raw : NEUTRAL_ACCENT;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const root = document.documentElement.style;
+  // a very faint derived glow for the backdrop / HUD so it stays dark + minimal
+  root.setProperty('--community-glow', `rgba(${r},${g},${b},0.10)`);
+  setCardAccent(hex);
+}
+
 function setEntryMode(on) {
   document.body.classList.toggle('entry-mode', !!on);
+  applyCommunityAmbient();
 }
 
 function hideEntryScreens() {
@@ -2365,6 +2429,7 @@ async function clearActiveCommunity() {
   stopTour();   // reset tour state before the pool is rebuilt for the next room
   if (memoryRibbon) memoryRibbon.hidden = true;
   if (!currentCommunity && communityPosts.length === 0 && pool.length === 0) {
+    applyCommunityAmbient();
     updateCommunityHud();
     updateEmptyWall();
     return;
@@ -2372,6 +2437,7 @@ async function clearActiveCommunity() {
   currentCommunity = null;
   communityPosts = [];
   savedIds = new Set();
+  applyCommunityAmbient();   // reset to neutral before cards rebuild
   buildPool();
   await loadPoolImages();
   disposeGallery();
@@ -2387,6 +2453,7 @@ async function showLanding(clearHash = true) {
   closeFlatView();
   closeAlbums();
   closePeople();
+  closeAtlas();
   closeAdminPanel();
   closeCommunityRoom();
   closeRecap();
@@ -2405,6 +2472,7 @@ async function showCommunityHub(clearHash = true) {
   closeFlatView();
   closeAlbums();
   closePeople();
+  closeAtlas();
   closeAdminPanel();
   closeCommunityRoom();
   closeRecap();
@@ -2700,6 +2768,7 @@ async function refreshCurrentCommunity() {
   if (!currentCommunity) return;
   try {
     currentCommunity = await api.call('GET', '/api/communities/' + encodeURIComponent(currentCommunity.id));
+    applyCommunityAmbient();
     updateCommunityHud();
   } catch {}
 }
@@ -2884,6 +2953,7 @@ async function openRecap(updateHash = true) {
   closeFlatView();
   closeAlbums();
   closePeople();
+  closeAtlas();
   closeCommunityRoom();
   closeAdminPanel();
   if (detail.style.display === 'block') closeProject();
@@ -3329,6 +3399,7 @@ document.getElementById('community-settings-form').addEventListener('submit', as
     };
     if (csCoverData !== undefined) body.cover = csCoverData;
     currentCommunity = await api.call('PUT', '/api/communities/' + encodeURIComponent(currentCommunity.id), body);
+    applyCommunityAmbient();
     updateCommunityHud();
     toast('COMMUNITY SAVED');
     await renderAdminPanel();
@@ -3434,6 +3505,7 @@ let viewingProfile = null;
 function openPeople(username, updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
   closeRecap();
+  closeAtlas();
   setNav('people');
   if (peopleOpen) { if (username) showProfile(username, updateHash); return; }
   peopleOpen = true;
@@ -3487,6 +3559,97 @@ function showPeopleList(clearHash = true) {
 }
 
 /* ============================================================
+   PLACES ATLAS - browse memories grouped by where they happened
+   ============================================================ */
+const atlasEl = document.getElementById('atlas');
+const atlasGrid = document.getElementById('atlas-grid');
+const atlasEmpty = document.getElementById('atlas-empty');
+const atlasSub = document.getElementById('atlas-sub');
+let atlasOpen = false;
+
+/* one place card: a cover image, the place label, a photo count badge, and a
+   small thumbstrip. Clicking the card opens the proven flat search filtered by
+   the place; clicking a thumb opens that photo directly. All user text esc()'d
+   and every image src built with mediaSrc (never '/'+value). */
+function renderAtlas(data) {
+  const places = (data && Array.isArray(data.places)) ? data.places : [];
+  atlasGrid.innerHTML = '';
+  atlasEmpty.hidden = places.length > 0;
+  const parts = [];
+  if (places.length) parts.push(`${places.length} PLACE${places.length === 1 ? '' : 'S'}`);
+  if (data && data.unplaced) parts.push(`${data.unplaced} UNPLACED`);
+  atlasSub.textContent = parts.join(' / ');
+  atlasSub.hidden = !parts.length;
+
+  places.forEach(pl => {
+    const card = document.createElement('div');
+    card.className = 'atlas-card';
+    const coverFile = pl.cover && pl.cover.file;
+    const cover = coverFile
+      ? `<img src="${esc(mediaSrc(coverFile))}" alt="${esc(pl.place)}">`
+      : '';
+    card.innerHTML =
+      `<button class="atlas-open" type="button">` +
+      `<span class="atlas-cover">${cover}<span class="atlas-count mono">${pl.count} PHOTO${pl.count === 1 ? '' : 'S'}</span></span>` +
+      `<span class="atlas-body"><span class="atlas-pin" aria-hidden="true">&#9678;</span><span class="atlas-name">${esc(pl.place)}</span></span>` +
+      `</button>` +
+      `<div class="atlas-thumbs"></div>`;
+    card.querySelector('.atlas-open').addEventListener('click', () => openFlatSearch(pl.place));
+    const thumbs = card.querySelector('.atlas-thumbs');
+    (Array.isArray(pl.photos) ? pl.photos : []).forEach(ph => {
+      const t = document.createElement('button');
+      t.className = 'atlas-thumb';
+      t.type = 'button';
+      t.title = ph.title || 'UNTITLED';
+      t.innerHTML = `<img src="${esc(mediaSrc(ph.file))}" alt="${esc(ph.title || '')}">`;
+      // a thumb is a doorway back into the sphere; openPulsePhoto prefers the
+      // local cache (fully wired detail view) else spins the sphere to it.
+      t.addEventListener('click', () => openPulsePhoto(ph.id));
+      thumbs.appendChild(t);
+    });
+    atlasGrid.appendChild(card);
+  });
+}
+
+function openAtlas() {
+  if (!currentCommunity) { showCommunityHub(); return; }
+  closeFlatView();
+  closePeople();
+  closeAlbums();
+  closeRecap();
+  setNav('atlas');
+  if (atlasOpen) return;
+  atlasOpen = true;
+  atlasEl.style.display = 'block';
+  atlasEl.setAttribute('aria-hidden', 'false');
+  atlasEl.scrollTop = 0;
+  atlasGrid.innerHTML = '';
+  atlasEmpty.hidden = true;
+  atlasSub.hidden = true;
+  gsap.fromTo(atlasEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut' });
+  loadAtlas();
+}
+
+function closeAtlas() {
+  if (!atlasOpen) return;
+  if (!peopleOpen && !albumsOpen) setNav('gallery');
+  atlasEl.setAttribute('aria-hidden', 'true');
+  gsap.to(atlasEl, {
+    yPercent: 100, duration: 0.7, ease: 'power3.inOut',
+    onComplete: () => { atlasEl.style.display = 'none'; atlasOpen = false; },
+  });
+}
+
+async function loadAtlas() {
+  let data = null;
+  try { data = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/places`); }
+  catch { data = null; }
+  if (atlasOpen) renderAtlas(data);
+}
+
+document.getElementById('atlas-close').addEventListener('click', closeAtlas);
+
+/* ============================================================
    ALBUMS
    ============================================================ */
 const albumsEl = document.getElementById('albums');
@@ -3515,6 +3678,7 @@ function renderAlbumsGrid(gridEl, list, emptyEl) {
 function openAlbums(albumId, updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
   closeRecap();
+  closeAtlas();
   setNav('albums');
   if (albumsOpen) { albumId ? showAlbum(albumId, updateHash) : showAlbumsList(); return; }
   albumsOpen = true;
@@ -4232,6 +4396,7 @@ async function handleHashRoute() {
     if (flatOpen) closeFlatView();
     if (albumsOpen) closeAlbums();
     if (peopleOpen) closePeople();
+    if (atlasOpen) closeAtlas();
     if (me) await showCommunityHub(false);
     else await showLanding(false);
     return;
@@ -4259,6 +4424,7 @@ async function handleHashRoute() {
       if (flatOpen) closeFlatView();
       if (albumsOpen) closeAlbums();
       if (peopleOpen) closePeople();
+      if (atlasOpen) closeAtlas();
       setNav('gallery');
       return;
     }
@@ -4273,6 +4439,7 @@ async function handleHashRoute() {
       closeFlatView();
       closeAlbums();
       closePeople();
+      closeAtlas();
       await openRecap(false);
       return;
     }
@@ -4280,6 +4447,7 @@ async function handleHashRoute() {
       closeFlatView();
       closeAlbums();
       closePeople();
+      closeAtlas();
       let post = communityPosts.find(p => p.id === itemId);
       if (!post) {
         await refreshCommunity();
@@ -4313,6 +4481,7 @@ async function handleHashRoute() {
     closeFlatView();
     closeAlbums();
     closePeople();
+    closeAtlas();
     let post = communityPosts.find(p => p.id === id);
     if (!post) {
       await refreshCommunity();

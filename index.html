@@ -172,6 +172,7 @@
   <button data-view="albums">Albums</button>
   <button data-view="saved">Saved</button>
   <button data-view="people">People</button>
+  <button data-view="atlas">Atlas</button>
 </nav>
 
 <button id="filter-btn">Filter</button>
@@ -277,6 +278,36 @@
       <span class="cinema-play-glyph" aria-hidden="true">&#9654;</span>
     </button>
     <button class="cinema-ctl cinema-close mono" type="button" aria-label="Exit cinema mode">&#10005;</button>
+  </div>
+</div>
+
+<!-- ======= KEYBOARD SHORTCUTS OVERLAY ======= -->
+<div id="shortcuts-overlay" hidden role="dialog" aria-label="Keyboard shortcuts" aria-modal="true">
+  <div class="modal-box shortcuts-box">
+    <div class="modal-head mono">KEYBOARD SHORTCUTS <button id="shortcuts-close" aria-label="Close">&#10005;</button></div>
+    <div class="shortcuts-groups">
+      <div class="shortcuts-group">
+        <h3 class="mono dim">NAVIGATION</h3>
+        <dl class="shortcuts-list">
+          <div class="shortcut-row"><dt><kbd>&larr;</kbd><kbd>&rarr;</kbd></dt><dd>Previous / next photo</dd></div>
+          <div class="shortcut-row"><dt><kbd>Esc</kbd></dt><dd>Back out or close</dd></div>
+        </dl>
+      </div>
+      <div class="shortcuts-group">
+        <h3 class="mono dim">VIEWING</h3>
+        <dl class="shortcuts-list">
+          <div class="shortcut-row"><dt><kbd>P</kbd></dt><dd>Play slideshow</dd></div>
+          <div class="shortcut-row"><dt><kbd>F</kbd></dt><dd>Cinema mode</dd></div>
+          <div class="shortcut-row"><dt><kbd>T</kbd></dt><dd>Sphere tour</dd></div>
+        </dl>
+      </div>
+      <div class="shortcuts-group">
+        <h3 class="mono dim">HELP</h3>
+        <dl class="shortcuts-list">
+          <div class="shortcut-row"><dt><kbd>?</kbd></dt><dd>Show this panel</dd></div>
+        </dl>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -437,6 +468,20 @@
     </div>
     <div id="flat-grid-wrap" class="flat-grid"></div>
     <p id="flat-empty" class="mono dim" hidden>NO PHOTOS YET.</p>
+  </div>
+</section>
+
+<!-- ======= PLACES ATLAS ======= -->
+<section id="atlas" aria-hidden="true">
+  <div class="people-inner">
+    <div class="detail-top">
+      <button id="atlas-close" class="mono">&larr;&nbsp; BACK TO SPHERE</button>
+      <span class="mono dim">ATLAS</span>
+    </div>
+    <h1 class="people-title">PLACES</h1>
+    <p id="atlas-sub" class="mono dim" hidden></p>
+    <div id="atlas-grid" class="atlas-grid"></div>
+    <p id="atlas-empty" class="mono dim" hidden>NO PLACES YET. ADD A PLACE WHEN YOU POST A PHOTO TO MAP YOUR MEMORIES.</p>
   </div>
 </section>
 

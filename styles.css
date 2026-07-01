@@ -1,3 +1,10 @@
+/* a faint derived glow published by main.js (applyCommunityAmbient) that tints
+   the ambient backdrop / HUD with the active community's accent. Neutral default
+   here so the public landing stays untinted and nothing depends on JS running. */
+:root {
+  --community-glow: rgba(154,154,154,0.10);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
@@ -30,7 +37,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background:
     linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0) 14%),
     linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 12%),
-    radial-gradient(ellipse 90% 90% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.45) 100%);
+    radial-gradient(ellipse 90% 90% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.45) 100%),
+    /* faint room-accent wash pooled at the bottom edge - dark + minimal, sits
+       behind the dark layers above so it never touches the photos themselves */
+    radial-gradient(ellipse 120% 80% at 50% 118%, var(--community-glow) 0%, rgba(0,0,0,0) 60%);
+  transition: background 0.6s ease;
 }
 
 #empty-wall {
@@ -71,7 +82,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .logo {
   position: fixed; top: 18px; left: 22px; z-index: 10;
   display: block; line-height: 0;
-  transition: transform 0.35s cubic-bezier(.2,.7,.2,1);
+  /* faint room-accent glow so the mark quietly echoes the active community */
+  filter: drop-shadow(0 0 10px var(--community-glow));
+  transition: transform 0.35s cubic-bezier(.2,.7,.2,1), filter 0.6s ease;
 }
 .logo:hover { transform: rotate(-8deg) scale(1.06); }
 
@@ -168,6 +181,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   display: flex; padding: 6px;
   background: rgba(26,26,26,0.9);
   border-radius: 999px;
+  /* hairline room-accent ring so the nav quietly belongs to the active room */
+  box-shadow: 0 0 0 1px var(--community-glow);
+  transition: box-shadow 0.6s ease;
 }
 .pill-nav button {
   position: relative; z-index: 2;
@@ -689,6 +705,42 @@ textarea { resize: vertical; }
 .modal-actions-stack { display: flex; flex-direction: column; gap: 10px; }
 .modal-actions-stack .ghost-pill { width: 100%; }
 
+/* ---------- keyboard shortcuts overlay ---------- */
+#shortcuts-overlay {
+  position: fixed; inset: 0; z-index: 160;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.shortcuts-box {
+  width: 460px;
+  animation: shortcuts-in .28s cubic-bezier(.2,.7,.3,1) both;
+}
+@keyframes shortcuts-in {
+  from { opacity: 0; transform: translateY(10px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.shortcuts-groups { display: flex; flex-direction: column; gap: 20px; }
+.shortcuts-group h3 { margin-bottom: 10px; }
+.shortcuts-list { display: flex; flex-direction: column; gap: 8px; }
+.shortcut-row {
+  display: flex; align-items: center; gap: 14px;
+  color: #cfcfcf; font-size: 13px;
+}
+.shortcut-row dt {
+  display: flex; gap: 6px; flex: 0 0 96px; justify-content: flex-end;
+}
+.shortcut-row dd { flex: 1; }
+#shortcuts-overlay kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; padding: 4px 7px;
+  font-family: 'Space Mono', monospace; font-size: 11px; line-height: 1;
+  color: #e8e8e8;
+  background: #181818; border: 1px solid #3d3d3d;
+  border-radius: 5px; box-shadow: 0 1px 0 #000;
+}
+
 /* ---------- people / profiles ---------- */
 #people {
   position: fixed; inset: 0; z-index: 60;
@@ -1047,6 +1099,50 @@ textarea { resize: vertical; }
 .flat-grid.list .fc-body { flex: 1; display: flex; align-items: center; gap: 16px; }
 .flat-grid.list .fc-sub { margin-top: 0; }
 .flat-grid.list .locate-pin { width: 26px; height: 26px; font-size: 13px; top: 5px; right: 5px; }
+
+/* ---------- places atlas ---------- */
+#atlas {
+  position: fixed; inset: 0; z-index: 60;
+  background: #050505; display: none; overflow-y: auto;
+}
+#atlas-sub { letter-spacing: .14em; font-size: 12px; margin: -18px 0 26px; }
+.atlas-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
+}
+.atlas-card {
+  background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 14px; overflow: hidden;
+  transition: border-color .2s, transform .2s;
+}
+.atlas-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
+.atlas-open {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+}
+.atlas-cover {
+  position: relative; display: block; height: 160px; background: #161616;
+}
+.atlas-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.atlas-count {
+  position: absolute; bottom: 8px; right: 8px; z-index: 2;
+  padding: 4px 9px; border-radius: 999px; font-size: 11px; letter-spacing: .06em;
+  background: rgba(8, 8, 8, .68); border: 1px solid rgba(255, 255, 255, .22); color: #fff;
+}
+.atlas-body { display: flex; align-items: center; gap: 8px; padding: 12px 14px; }
+.atlas-pin { color: #cfcfcf; font-size: 14px; line-height: 1; }
+.atlas-name {
+  color: #fff; font-weight: 500; font-size: 15px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.atlas-thumbs {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  padding: 0 14px 14px;
+}
+.atlas-thumb {
+  border-radius: 8px; overflow: hidden; background: #141414;
+  border: 1px solid #242424; cursor: pointer;
+  transition: border-color .2s;
+}
+.atlas-thumb:hover { border-color: #6a6a6a; }
+.atlas-thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 
 /* ---------- community room / admin ---------- */
 #community-room, #community-admin, #recap-overlay {
@@ -1467,7 +1563,7 @@ a:focus-visible,
 
 /* ---------- prefers-contrast: strengthen borders ---------- */
 @media (prefers-contrast: more) {
-  .flat-card, .album-card, .person-card, .community-card,
+  .flat-card, .album-card, .person-card, .community-card, .atlas-card,
   .mini-photo, .room-panel, .admin-panel, .modal-box,
   .fp-tag, .scope-chip, .place-chip, .ghost-pill,
   .d-nav button, .like-btn, .reaction, .notif-row,
@@ -1497,6 +1593,7 @@ a:focus-visible,
   .ghost-pill:hover, .ghost-pill:active,
   .flat-card:hover, .flat-card:active,
   .album-card:hover, .album-card:active,
+  .atlas-card:hover, .atlas-card:active,
   .person-card:hover, .person-card:active,
   .community-card:hover, .community-card:active,
   .mini-photo:hover, .mini-photo:active,

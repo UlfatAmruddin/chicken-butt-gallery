@@ -4,6 +4,25 @@ import * as THREE from 'three';
 import { LOW_POWER } from './config.js';
 import { coverDraw } from './util.js';
 
+// active community accent (#rrggbb) echoed in the faint inset frame around each
+// print, so cards subtly carry the room color. Neutral gray until a room sets it.
+let cardAccent = '#9a9a9a';
+
+/* set the accent used for the inset frame stroke. Ignores anything that is not
+   a #rrggbb hex so makeCardTexture stays deterministic and legible. */
+export function setCardAccent(hex) {
+  cardAccent = /^#[0-9a-f]{6}$/i.test(hex || '') ? hex : '#9a9a9a';
+}
+
+/* parse #rrggbb into an [r,g,b] triple */
+function hexRgb(hex) {
+  return [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ];
+}
+
 export function makeCardTexture(p, img, maxAniso) {
   const S = LOW_POWER.cardTextureSize;
   const c = document.createElement('canvas');
@@ -61,8 +80,10 @@ export function makeCardTexture(p, img, maxAniso) {
     vig.addColorStop(1, 'rgba(0,0,0,0.28)');
     x.fillStyle = vig;
     x.fillRect(r.x, r.y, r.w, r.h);
-    // faint inset frame reading as a matted gallery print
-    x.strokeStyle = 'rgba(255,255,255,0.10)';
+    // faint inset frame reading as a matted gallery print, tinted with the
+    // active community accent at a low alpha so the room color subtly echoes
+    const [fr, fg, fb] = hexRgb(cardAccent);
+    x.strokeStyle = `rgba(${fr},${fg},${fb},0.14)`;
     x.lineWidth = 1;
     x.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
   }
