@@ -1,6 +1,6 @@
 /* Renders a gallery card (header labels + cover artwork + footer tags) onto a
    canvas and returns it as a Three.js texture. Pure given (p, img, maxAniso). */
-import * as THREE from 'three';
+import * as THREE from './vendor/three.module.js';
 import { LOW_POWER } from './config.js';
 import { coverDraw } from './util.js';
 

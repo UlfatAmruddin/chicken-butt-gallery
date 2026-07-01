@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from './js/vendor/three.module.js';
 import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw } from './js/util.js';
 import { LOW_POWER, IMAGE_LOAD_CONCURRENCY } from './js/config.js';
 import { makeCardTexture, setCardAccent } from './js/textures.js';

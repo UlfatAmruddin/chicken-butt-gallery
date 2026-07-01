@@ -1,3 +1,22 @@
+/* Self-hosted fonts (served from /assets/fonts) so the app has no third-party
+   font origin. Inter ships as one variable woff2 covering the 300-700 range. */
+@font-face {
+  font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('/assets/fonts/inter-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter'; font-style: italic; font-weight: 100 900; font-display: swap;
+  src: url('/assets/fonts/inter-italic-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Space Mono'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/assets/fonts/space-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Space Mono'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('/assets/fonts/space-mono-700.woff2') format('woff2');
+}
+
 /* a faint derived glow published by main.js (applyCommunityAmbient) that tints
    the ambient backdrop / HUD with the active community's accent. Neutral default
    here so the public landing stays untinted and nothing depends on JS running. */
