@@ -11,7 +11,7 @@ const {
   requestCommunityId, joinedCommunities, resolveCommunityForAuth, requireAuth, requireCommunity,
   scopedPosts, scopedAlbums, userPhotoCount, publicProfile, albumCoverFile, publicAlbum,
   communityCoverFile, publicCommunity, canManagePost, assertSameCommunityPhoto,
-  saveDataUrlImage, safeUnlinkAsset, addAudit, addNotification, publicNotification,
+  saveDataUrlImage, safeUnlinkAsset, saveImage, deleteImage, addAudit, addNotification, publicNotification,
   memberList, publicPrompt, activityFeed,
 } = require('./lib/helpers');
 
@@ -81,12 +81,12 @@ async function handleApi(req, res, pathname, params) {
       for (const field of ['avatar', 'cover']) {
         if (b[field] === undefined) continue;
         if (b[field] === null || b[field] === '') {
-          if (u[field]) safeUnlinkAsset(u[field]);
+          if (u[field]) await deleteImage(u[field]);
           u[field] = '';
         } else {
-          const saved = saveDataUrlImage(b[field], 'assets/avatars', `${u.username}-${field}`, 8 * 1024 * 1024);
+          const saved = await saveImage(b[field], 'avatars', `${u.username}-${field}`, 8 * 1024 * 1024);
           if (saved.error) return send(res, 400, { error: saved.error });
-          if (u[field]) safeUnlinkAsset(u[field]);
+          if (u[field]) await deleteImage(u[field]);
           u[field] = saved.file;
         }
       }
@@ -192,7 +192,7 @@ async function handleApi(req, res, pathname, params) {
       if (b.cover === '') {
         c.cover = '';
       } else if (b.cover) {
-        const saved = saveDataUrlImage(b.cover, 'assets/community', `${c.id}-cover`, 8 * 1024 * 1024);
+        const saved = await saveImage(b.cover, 'community', `${c.id}-cover`, 8 * 1024 * 1024);
         if (saved.error) return send(res, 400, { error: saved.error });
         c.cover = saved.file;
       }
@@ -461,7 +461,7 @@ async function handleApi(req, res, pathname, params) {
       const ctx = requireCommunity(req, res, params);
       if (!ctx) return;
       const b = JSON.parse(await readBody(req));
-      const saved = saveDataUrlImage(b.image, 'assets/uploads', ctx.auth.user.username);
+      const saved = await saveImage(b.image, 'uploads', ctx.auth.user.username);
       if (saved.error) return send(res, 400, { error: saved.error });
       const yr = parseInt(b.year, 10);
       const promptId = clean(b.promptId, 40);
@@ -581,7 +581,7 @@ async function handleApi(req, res, pathname, params) {
       if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
       if (!canManagePost(auth, post)) return send(res, 403, { error: 'You do not have permission to delete this photo.' });
       const photoId = post.id;
-      safeUnlinkAsset(post.file);
+      await deleteImage(post.file);
       posts.splice(i, 1);
       saveJSON('posts.json', posts);
       let albumsChanged = false;

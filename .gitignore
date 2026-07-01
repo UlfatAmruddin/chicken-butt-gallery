@@ -9,6 +9,7 @@
 .env
 .env.*
 !.env.example
+.supabase.json
 
 # Node
 node_modules/

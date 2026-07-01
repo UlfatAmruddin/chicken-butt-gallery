@@ -21,7 +21,7 @@ api.communityResolver = () => currentCommunity;
 
 function postToProject(p) {
   return {
-    src: '/' + p.file,
+    src: mediaSrc(p.file),
     client: p.client || '@' + p.username,
     title: (p.title || 'UNTITLED').toUpperCase(),
     cat: 'COMMUNITY',
@@ -1487,7 +1487,7 @@ tabRegister.addEventListener('click', () => setAuthMode('register'));
 function updateMeChip() {
   if (!me) { meChip.hidden = true; return; }
   meChip.hidden = false;
-  meChip.innerHTML = (me.avatar ? `<img class="chip-av" src="/${esc(me.avatar)}" alt="">` : '') + '@' + esc(me.username);
+  meChip.innerHTML = (me.avatar ? `<img class="chip-av" src="${esc(mediaSrc(me.avatar))}" alt="">` : '') + '@' + esc(me.username);
 }
 meChip.addEventListener('click', () => { if (me) openPeople(me.username); });
 
@@ -1717,7 +1717,7 @@ function renderCommunityHub() {
   allCommunities.forEach(c => {
     const card = document.createElement('button');
     card.className = 'community-card';
-    if (c.coverFile) card.style.backgroundImage = `url('/${esc(c.coverFile)}')`;
+    if (c.coverFile) card.style.backgroundImage = `url('${esc(mediaSrc(c.coverFile))}')`;
     card.innerHTML =
       `<span class="cc-name">${esc(c.name)}</span>` +
       `<span class="mono cc-sub">${c.photoCount} PHOTO${c.photoCount === 1 ? '' : 'S'} / ${c.memberCount} MEMBER${c.memberCount === 1 ? '' : 'S'} / ${esc((c.role || 'member').toUpperCase())}</span>`;
@@ -1994,7 +1994,7 @@ function closeCommunityRoom() {
 function renderCommunityRoom() {
   if (!currentCommunity) return;
   const cover = document.getElementById('room-cover');
-  cover.style.backgroundImage = currentCommunity.coverFile ? `linear-gradient(to bottom, rgba(0,0,0,.18), rgba(0,0,0,.82)), url('/${esc(currentCommunity.coverFile)}')` : '';
+  cover.style.backgroundImage = currentCommunity.coverFile ? `linear-gradient(to bottom, rgba(0,0,0,.18), rgba(0,0,0,.82)), url('${esc(mediaSrc(currentCommunity.coverFile))}')` : '';
   document.getElementById('room-accent').style.background = currentCommunity.accent || '#fff';
   document.getElementById('room-title').textContent = currentCommunity.name;
   document.getElementById('room-desc').textContent = currentCommunity.description || '';
@@ -2013,7 +2013,7 @@ function renderCommunityRoom() {
   pinnedPosts.forEach(post => {
     const tile = document.createElement('button');
     tile.className = 'mini-photo';
-    tile.innerHTML = `<img src="/${esc(post.file)}" alt="${esc(post.title || '')}"><span>${esc(post.title || 'UNTITLED')}</span>`;
+    tile.innerHTML = `<img src="${esc(mediaSrc(post.file))}" alt="${esc(post.title || '')}"><span>${esc(post.title || 'UNTITLED')}</span>`;
     tile.addEventListener('click', () => openDetailFor(postToProject(post)));
     pinnedWrap.appendChild(tile);
   });
@@ -2026,7 +2026,7 @@ function renderCommunityRoom() {
     row.className = 'activity-row';
     const label = activityLabel(ev);
     row.innerHTML =
-      (ev.file ? `<img src="/${esc(ev.file)}" alt="">` : `<span class="activity-dot"></span>`) +
+      (ev.file ? `<img src="${esc(mediaSrc(ev.file))}" alt="">` : `<span class="activity-dot"></span>`) +
       `<span><strong>${esc(label)}</strong><small class="mono dim">@${esc(ev.actor || 'system')} / ${timeAgo(ev.created)}</small></span>`;
     row.addEventListener('click', () => {
       if (ev.photoId) {
@@ -2399,7 +2399,7 @@ let allAlbums = [];
 let viewingAlbum = null;   // { album, posts }
 
 function albumCardHTML(a) {
-  const cover = a.coverFile ? ` style="background-image:url('/${esc(a.coverFile)}')"` : '';
+  const cover = a.coverFile ? ` style="background-image:url('${esc(mediaSrc(a.coverFile))}')"` : '';
   return `<div class="album-cover"${cover}>${a.coverFile ? '' : 'EMPTY'}</div>` +
     `<div class="ac-body"><div class="ac-name">${esc(a.name)}</div>` +
     `<div class="mono dim ac-sub">${a.photoCount} PHOTO${a.photoCount === 1 ? '' : 'S'} · @${esc(a.owner)}</div></div>`;
@@ -2474,7 +2474,7 @@ function renderAlbumPhotos(data, own) {
     const tile = document.createElement('div');
     tile.className = 'pp-tile';
     const img = document.createElement('img');
-    img.src = '/' + post.file; img.alt = post.title; img.title = post.title;
+    img.src = mediaSrc(post.file); img.alt = post.title; img.title = post.title;
     tile.appendChild(img);
     tile.addEventListener('click', (e) => {
       if (e.target.closest('.ap-actions')) return;
@@ -2639,7 +2639,7 @@ async function renderAddPhotos() {
   mine.forEach(post => {
     const tile = document.createElement('button');
     tile.className = 'ap-pick' + (inSet.has(post.id) ? ' in' : '');
-    tile.innerHTML = `<img src="/${esc(post.file)}" alt=""><span class="ap-check">✓</span>`;
+    tile.innerHTML = `<img src="${esc(mediaSrc(post.file))}" alt=""><span class="ap-check">✓</span>`;
     tile.addEventListener('click', async () => {
       const has = tile.classList.contains('in');
       try {
@@ -2675,7 +2675,7 @@ async function showProfile(username, updateHash = true) {
 
   document.getElementById('profile-avatar').innerHTML = avatarInner(p);
   const coverEl = document.getElementById('profile-cover');
-  if (p.cover) { coverEl.style.backgroundImage = `url("/${esc(p.cover)}")`; coverEl.hidden = false; }
+  if (p.cover) { coverEl.style.backgroundImage = `url("${esc(mediaSrc(p.cover))}")`; coverEl.hidden = false; }
   else { coverEl.hidden = true; coverEl.style.backgroundImage = ''; }
   document.getElementById('profile-name').textContent = p.displayName;
   document.getElementById('profile-username').textContent = '@' + p.username;
@@ -2701,7 +2701,7 @@ async function showProfile(username, updateHash = true) {
     const tile = document.createElement('div');
     tile.className = 'pp-tile';
     const img = document.createElement('img');
-    img.src = '/' + post.file;
+    img.src = mediaSrc(post.file);
     img.alt = post.title;
     img.title = post.title;
     tile.appendChild(img);
@@ -2761,7 +2761,7 @@ profileEditBtn.addEventListener('click', () => {
   document.getElementById('pe-err').textContent = '';
   peAvatarData = undefined; peCoverData = undefined;
   setEditAvatarPreview(viewingProfile);
-  setEditCoverPreview(viewingProfile.cover ? '/' + viewingProfile.cover : '');
+  setEditCoverPreview(viewingProfile.cover ? mediaSrc(viewingProfile.cover) : '');
   profileEditForm.hidden = false;
   profileEditBtn.hidden = true;
 });
