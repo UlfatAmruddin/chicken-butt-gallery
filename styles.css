@@ -403,6 +403,21 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .like-btn .heart { font-size: 16px; color: #5d5d5d; transition: color .2s; }
 .like-btn.liked { border-color: #e0506a; color: #fff; }
 .like-btn.liked .heart { color: #e0506a; }
+/* compact emoji reaction bar - four chips next to the legacy heart */
+.reaction-bar { display: inline-flex; align-items: center; gap: 6px; }
+.reaction {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 11px; border: 1px solid #2e2e2e; border-radius: 999px;
+  color: #cfcfcf; font-size: 15px; line-height: 1;
+  transition: border-color .2s, background .2s, transform .15s;
+}
+.reaction:hover { border-color: #6a6a6a; transform: translateY(-1px); }
+.reaction:active { transform: scale(0.94); }
+.reaction .r-emoji { font-size: 16px; filter: grayscale(0.35); transition: filter .2s; }
+.reaction .r-count { font: 500 12px "Space Mono", monospace; color: #8a8a8a; }
+.reaction.on { border-color: #6f6f78; background: #191922; color: #fff; }
+.reaction.on .r-emoji { filter: none; }
+.reaction.on .r-count { color: #d8d8d8; }
 /* private "save to collection" toggle (star bookmark) */
 .save-btn .save-label { font: 500 12px "Space Mono", monospace; letter-spacing: .1em; }
 .save-btn .bookmark { font-size: 16px; color: #5d5d5d; transition: color .2s, transform .2s; }
@@ -827,6 +842,10 @@ textarea { resize: vertical; }
 .share-btn { color: #cfcfcf; }
 .share-btn:hover { color: #fff; }
 .dl-btn { margin-left: -4px; }
+/* "FIND ON SPHERE" - spin the sphere to this photo from the detail bar */
+.locate-btn { display: inline-flex; align-items: center; transition: color .2s, letter-spacing .2s; }
+.locate-btn:hover { color: #fff; letter-spacing: .04em; }
+.locate-btn[hidden] { display: none; }
 
 /* slideshow play/pause toggle + progress ring (detail action row) */
 .play-btn {
@@ -866,6 +885,7 @@ textarea { resize: vertical; }
 .flat-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .flat-card { text-align: left; cursor: pointer; background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 12px; overflow: hidden; transition: border-color .2s, transform .2s; }
 .flat-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
+.flat-card .fc-media { position: relative; display: block; }
 .flat-card .fc-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; background: #111; }
 .flat-card .fc-body { display: block; padding: 11px 13px; }
 .flat-card .fc-title { color: #fff; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -875,9 +895,11 @@ textarea { resize: vertical; }
 /* list mode */
 .flat-grid.list { grid-template-columns: 1fr; gap: 8px; max-width: 900px; }
 .flat-grid.list .flat-card { display: flex; align-items: center; }
+.flat-grid.list .fc-media { width: 86px; height: 64px; flex: none; }
 .flat-grid.list .fc-img { width: 86px; height: 64px; aspect-ratio: auto; flex: none; }
 .flat-grid.list .fc-body { flex: 1; display: flex; align-items: center; gap: 16px; }
 .flat-grid.list .fc-sub { margin-top: 0; }
+.flat-grid.list .locate-pin { width: 26px; height: 26px; font-size: 13px; top: 5px; right: 5px; }
 
 /* ---------- community room / admin ---------- */
 #community-room, #community-admin {
@@ -933,11 +955,35 @@ textarea { resize: vertical; }
   text-align: left; border-radius: 10px; overflow: hidden; background: #141414;
   border: 1px solid #242424;
 }
+.mini-photo .mp-media { position: relative; display: block; }
 .mini-photo img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 .mini-photo span {
   display: block; color: #fff; font-size: 12px; padding: 8px 9px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ---- "find on sphere" overlay pin (flat cards + room pinned tiles) ---- */
+.locate-pin {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 999px;
+  background: rgba(8, 8, 8, .62); border: 1px solid rgba(255, 255, 255, .28);
+  color: #fff; font-size: 15px; line-height: 1; cursor: pointer;
+  opacity: 0; transform: scale(.82);
+  transition: opacity .2s, transform .2s, background .2s, border-color .2s;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.flat-card:hover .locate-pin, .mini-photo:hover .locate-pin,
+.flat-card:focus-within .locate-pin, .mini-photo:focus-within .locate-pin {
+  opacity: 1; transform: scale(1);
+}
+.locate-pin:hover { background: #fff; color: #0a0a0a; border-color: #fff; }
+.locate-pin:focus-visible { opacity: 1; transform: scale(1); outline: 2px solid #fff; outline-offset: 2px; }
+/* touch / no-hover: keep the pin visible so it stays reachable */
+@media (hover: none) {
+  .locate-pin { opacity: .9; transform: scale(1); }
+}
+
 .activity-feed, .admin-list { display: flex; flex-direction: column; gap: 8px; }
 .activity-row, .admin-row {
   display: flex; align-items: center; gap: 12px; text-align: left;
@@ -1023,6 +1069,46 @@ textarea { resize: vertical; }
   background: #fff; color: #000;
   padding: 12px 22px; border-radius: 999px;
   letter-spacing: .08em;
+}
+
+/* ---------- on this day ribbon ---------- */
+#memory-ribbon {
+  position: fixed; top: 84px; left: 50%; transform: translateX(-50%);
+  z-index: 12;
+  display: flex; align-items: stretch; gap: 0;
+  max-width: min(560px, calc(100vw - 44px));
+  background: rgba(20,20,20,0.92);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+}
+#memory-ribbon-open {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 11px 8px 11px 18px;
+  color: #e6e6e6;
+  font: inherit; letter-spacing: 0.06em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .2s;
+}
+#memory-ribbon-open:hover { color: #fff; }
+#memory-ribbon .mr-glyph {
+  color: #fff; font-size: 13px;
+  animation: mr-pulse 2.6s ease-in-out infinite;
+}
+@keyframes mr-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #memory-ribbon .mr-glyph { animation: none; opacity: .8; } }
+#memory-ribbon-close {
+  padding: 0 16px;
+  color: #8a8a8a; font-size: 12px;
+  border-left: 1px solid rgba(255,255,255,0.12);
+  transition: color .2s, background .2s;
+}
+#memory-ribbon-close:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.entry-mode #memory-ribbon { opacity: 0; pointer-events: none; }
+@media (max-width: 760px) {
+  #memory-ribbon { top: 72px; max-width: calc(100vw - 32px); }
+  #memory-ribbon-open { padding-left: 14px; }
 }
 
 [hidden] { display: none !important; }

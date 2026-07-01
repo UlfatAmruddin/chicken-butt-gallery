@@ -16,6 +16,9 @@ const {
   memberList, publicPrompt, activityFeed,
 } = require('./lib/helpers');
 
+// the fixed reaction allow-list. 'heart' is the legacy like; the rest are extra.
+const REACTION_EMOJI = ['heart', 'laugh', 'wow', 'sad', 'fire'];
+
 /* ---------------- API ---------------- */
 async function handleApi(req, res, pathname, params) {
   try {
@@ -481,6 +484,7 @@ async function handleApi(req, res, pathname, params) {
         pinned: false,
         promptId: promptOk ? promptId : '',
         likes: [],
+        reactions: {},
         comments: [],
         created: Date.now(),
       };
@@ -504,6 +508,40 @@ async function handleApi(req, res, pathname, params) {
       saveJSON('posts.json', posts);
       if (i < 0) addNotification(post.username, post.communityId, 'like', name, post.id, { title: post.title });
       return send(res, 200, { count: post.likes.length, liked: i < 0 });
+    }
+
+    // emoji reactions: a small fixed set on top of the legacy heart. 'heart'
+    // stays mapped to post.likes so the heart count is one source of truth;
+    // the other emojis live in post.reactions = { emoji: [usernames] }.
+    if (req.method === 'POST' && seg[1] === 'photos' && seg[2] && seg[3] === 'react') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const post = posts.find(p => p.id === seg[2]);
+      if (!post) return send(res, 404, { error: 'No such photo.' });
+      const c = findCommunity(post.communityId);
+      if (!isCommunityMember(c, auth.user.username)) return send(res, 403, { error: 'You are not a member of this community.' });
+      const b = JSON.parse(await readBody(req, 64 * 1024));
+      const emoji = clean(b.emoji, 12);
+      if (!REACTION_EMOJI.includes(emoji)) return send(res, 400, { error: 'Unknown reaction.' });
+      const name = auth.user.username;
+      let list, on;
+      if (emoji === 'heart') {
+        // heart is the canonical like: toggle post.likes so counts stay in sync
+        if (!Array.isArray(post.likes)) post.likes = [];
+        list = post.likes;
+        const i = list.indexOf(name);
+        if (i >= 0) { list.splice(i, 1); on = false; } else { list.push(name); on = true; }
+      } else {
+        if (!post.reactions || typeof post.reactions !== 'object' || Array.isArray(post.reactions)) post.reactions = {};
+        list = Array.isArray(post.reactions[emoji]) ? post.reactions[emoji] : [];
+        const i = list.indexOf(name);
+        if (i >= 0) list.splice(i, 1); else list.push(name);
+        on = i < 0;
+        if (list.length) post.reactions[emoji] = list; else delete post.reactions[emoji];
+      }
+      saveJSON('posts.json', posts);
+      if (on) addNotification(post.username, post.communityId, 'reaction', name, post.id, { title: post.title, text: emoji });
+      return send(res, 200, { emoji, on, count: list.length, likes: post.likes, reactions: post.reactions || {} });
     }
 
     /* ---------------- private "saved" tray (per user, per community) ---------------- */

@@ -122,6 +122,15 @@
 <button id="invite-tools-btn" class="mono" hidden>Invite</button>
 <button class="lets-talk" id="lets-talk">Let's Talk</button>
 
+<!-- ======= ON THIS DAY RIBBON ======= -->
+<div id="memory-ribbon" class="mono" hidden>
+  <button id="memory-ribbon-open" type="button" aria-label="Open resurfaced memories">
+    <span class="mr-glyph" aria-hidden="true">&#9678;</span>
+    <span id="memory-ribbon-text"></span>
+  </button>
+  <button id="memory-ribbon-close" type="button" aria-label="Dismiss">&#10005;</button>
+</div>
+
 <button id="settings-btn" class="circle-btn" aria-label="Settings" title="Display settings">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/>
@@ -219,8 +228,10 @@
     <section id="d-social" class="d-social" hidden>
       <div class="d-react">
         <button id="d-like" class="like-btn"><span class="heart">&hearts;</span> <span id="d-like-count">0</span></button>
+        <div id="d-reactions" class="reaction-bar" aria-label="React to this photo"></div>
         <button id="d-save" class="like-btn save-btn" aria-pressed="false" title="Save to your private collection"><span class="bookmark">&#9734;</span> <span class="save-label">SAVE</span></button>
         <span class="mono dim" id="d-comment-count">0 COMMENTS</span>
+        <button id="d-locate" class="mono share-btn locate-btn" title="Spin the sphere to this photo">FIND ON SPHERE&nbsp;&#9678;</button>
         <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
         <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8615;</button>
         <button id="d-play" class="mono play-btn" aria-pressed="false" title="Play slideshow" hidden>

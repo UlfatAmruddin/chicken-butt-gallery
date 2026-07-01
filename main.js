@@ -39,6 +39,7 @@ function postToProject(p) {
     promptId: p.promptId || '',
     created: p.created || 0,
     likes: Array.isArray(p.likes) ? p.likes : [],
+    reactions: (p.reactions && typeof p.reactions === 'object' && !Array.isArray(p.reactions)) ? p.reactions : {},
     comments: Array.isArray(p.comments) ? p.comments : [],
   };
 }
@@ -53,6 +54,106 @@ function buildPool() {
     })
     .map(postToProject);
 }
+
+/* ============================================================
+   ON THIS DAY - resurface past memories on the sphere.
+   Purely client-side over the current community pool: it finds photos
+   posted on today's calendar date in previous years and, failing that,
+   picks the oldest photo as a "REDISCOVER" nudge. Dismissible per day.
+   ============================================================ */
+const memoryRibbon = document.getElementById('memory-ribbon');
+const memoryRibbonText = document.getElementById('memory-ribbon-text');
+const memoryRibbonOpen = document.getElementById('memory-ribbon-open');
+const memoryRibbonClose = document.getElementById('memory-ribbon-close');
+let onThisDay = null;   // { kind:'onthisday'|'rediscover', matches:[project], label }
+
+/* local yyyy-mm-dd for a Date (used for both matching and the dismissal key) */
+function localDayKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function otdDismissKey() {
+  const id = currentCommunity ? (currentCommunity.id || currentCommunity.slug || '') : '';
+  return `pg_otd_${id}_${localDayKey(new Date())}`;
+}
+
+/* build the "on this day" result from the current pool, or null if nothing fits */
+function computeOnThisDay() {
+  if (!currentCommunity || !pool.length) return null;
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const matches = [];
+  for (const p of pool) {
+    if (!p.created) continue;
+    const d = new Date(p.created);
+    if (isNaN(d)) continue;
+    if (d.getMonth() === now.getMonth() && d.getDate() === now.getDate() && d.getFullYear() < curYear) {
+      matches.push(p);
+    }
+  }
+  if (matches.length) {
+    // oldest first so the memory opens at the earliest year
+    matches.sort((a, b) => a.created - b.created);
+    const yrsAgo = curYear - new Date(matches[0].created).getFullYear();
+    const n = matches.length;
+    const label = `ON THIS DAY - ${n} MEMOR${n === 1 ? 'Y' : 'IES'} FROM ${yrsAgo} YEAR${yrsAgo === 1 ? '' : 'S'} AGO`;
+    return { kind: 'onthisday', matches, label };
+  }
+  // fallback: nudge people to rediscover the oldest photo in the room
+  const past = pool.filter(p => p.created && new Date(p.created).getFullYear() < curYear);
+  if (!past.length) return null;
+  past.sort((a, b) => a.created - b.created);
+  const yrsAgo = curYear - new Date(past[0].created).getFullYear();
+  const label = yrsAgo > 0
+    ? `REDISCOVER - A MEMORY FROM ${yrsAgo} YEAR${yrsAgo === 1 ? '' : 'S'} AGO`
+    : 'REDISCOVER - AN OLDER MEMORY';
+  return { kind: 'rediscover', matches: [past[0]], label };
+}
+
+/* compute + render (or hide) the ribbon for the active community */
+function renderMemoryRibbon() {
+  if (!memoryRibbon) return;
+  try {
+    onThisDay = null;
+    memoryRibbon.hidden = true;
+    if (!currentCommunity || !me || !pool.length) return;
+    // respect a per-day, per-community dismissal
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(otdDismissKey()) === '1'; } catch {}
+    if (dismissed) return;
+    const otd = computeOnThisDay();
+    if (!otd) return;
+    onThisDay = otd;
+    memoryRibbonText.textContent = otd.label;
+    memoryRibbon.hidden = false;
+    if (!reduceMotion) {
+      gsap.fromTo(memoryRibbon, { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' });
+    }
+  } catch { memoryRibbon.hidden = true; }
+}
+
+/* open the resurfaced memory in the detail view; PREV/NEXT then walk normally */
+function openMemoryRibbon() {
+  if (!onThisDay || !onThisDay.matches.length) return;
+  const first = onThisDay.matches[0];
+  openDetailFor(first);
+  if (onThisDay.kind === 'onthisday' && onThisDay.matches.length > 1) {
+    toast(`${onThisDay.matches.length} MEMORIES FROM TODAY, OLDEST FIRST`);
+  }
+}
+
+function dismissMemoryRibbon() {
+  try { localStorage.setItem(otdDismissKey(), '1'); } catch {}
+  if (!memoryRibbon) return;
+  if (reduceMotion) { memoryRibbon.hidden = true; return; }
+  gsap.to(memoryRibbon, { opacity: 0, y: -10, duration: 0.3, ease: 'power2.in', onComplete: () => { memoryRibbon.hidden = true; } });
+}
+
+if (memoryRibbonOpen) memoryRibbonOpen.addEventListener('click', openMemoryRibbon);
+if (memoryRibbonClose) memoryRibbonClose.addEventListener('click', dismissMemoryRibbon);
 
 /* ============================================================
    GALLERY GEOMETRY - interior of a sphere
@@ -928,6 +1029,90 @@ function closeProject() {
 }
 let pendingRebuild = false;
 
+/* ============================================================
+   FIND ON SPHERE - from any overlay (flat grid, saved tray, album,
+   profile, room, notifications, detail page) close everything and
+   smoothly spin the sphere so the photo's card sits dead-centre, then
+   give it a short "pop" pulse so it is easy to spot. Pure client-side
+   navigation - reuses the same wrap()/nearestEquiv() math as dragging
+   so the sphere always takes the short way around.
+   ============================================================ */
+function pulseCard(card) {
+  if (!card) return;
+  gsap.killTweensOf(card, 'pop');
+  const t = gsap.timeline();
+  t.to(card, { pop: 9, duration: reduceMotion ? 0 : 0.35, ease: 'power2.out', onUpdate: markSceneDirty });
+  t.to(card, { pop: 0, duration: reduceMotion ? 0 : 0.7, ease: 'power2.inOut', onUpdate: markSceneDirty }, reduceMotion ? 0 : '+=0.12');
+}
+
+/* the live sphere card for a post (or null), plus the "can we spin to it?" test.
+   used by every "find on sphere" affordance so they all agree. */
+function cardForPost(postId) {
+  if (!postId) return null;
+  return cards.find(c => pool[c.pIdx] && pool[c.pIdx].postId === postId) || null;
+}
+function postOnSphere(postId) { return !!cardForPost(postId); }
+
+/* the overlay pin markup + its wiring, shared by flat cards and room tiles.
+   glyph is a literal so nothing user-typed touches innerHTML. */
+const LOCATE_PIN_HTML = '<span class="locate-pin" role="button" tabindex="0" title="Find on sphere" aria-label="Find on sphere">&#9678;</span>';
+function wireLocatePin(container, postId) {
+  const pin = container.querySelector('.locate-pin');
+  if (!pin) return;
+  const go = (e) => { e.stopPropagation(); e.preventDefault(); focusCardOnSphere(postId); };
+  pin.addEventListener('click', go);
+  pin.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+}
+
+function focusCardOnSphere(postId) {
+  if (!postId) return;
+  // no sphere to spin (no photos, or gallery not built yet): just open the photo.
+  const card = cardForPost(postId);
+  if (!card || !cards.length) {
+    const p = pool.find(x => x.postId === postId);
+    if (p) openDetailFor(p);
+    return;
+  }
+
+  // close every overlay that might be covering the sphere.
+  if (detail.style.display === 'block') closeProject();
+  if (flatOpen) closeFlatView();
+  if (albumsOpen) closeAlbums();
+  if (peopleOpen) closePeople();
+  if (roomOpen) closeCommunityRoom();
+  if (adminOpen) closeAdminPanel();
+  if (panelOpen) hideFilterPanel();
+  if (notifOpen) closeNotifPanel();
+  hideEntryScreens();
+
+  // if the card is filtered out, clear the tag filter so it is fully visible.
+  if (card.filtered && activeTags.size) {
+    activeTags.clear();
+    fpTags.querySelectorAll('.fp-tag').forEach(b => b.classList.remove('active'));
+    applyFilter();
+  }
+
+  interacted = true;              // stop the intro drift from fighting the spin
+  state.vx = state.vy = 0;
+  const nx = nearestEquiv(-card.u, state.tx, layout.totalW);
+  const ny = nearestEquiv(-card.v, state.ty, layout.totalH);
+  if (reduceMotion) {
+    state.tx = state.cx = nx;
+    state.ty = state.cy = ny;
+    markSceneDirty();
+    pulseCard(card);
+  } else {
+    gsap.killTweensOf(state, 'tx,ty');
+    gsap.to(state, {
+      tx: nx, ty: ny, duration: 1.05, ease: 'power3.inOut',
+      onUpdate: markSceneDirty,
+      onComplete: () => pulseCard(card),
+    });
+  }
+  markSceneDirty();
+  toast('FOUND ON SPHERE');
+}
+
 /* ---- scope chips (shared by upload + edit forms) ---- */
 const SCOPES = ['WEBSITE', '3D', 'AI', 'CAMPAIGN', 'FILM', 'TOOL', 'SOCIAL', 'CONTENT', 'EVENT', 'GAME', 'AR', 'MOTION', 'OOH', 'ILLUSTRATION', 'PHYSICAL', 'PHOTO'];
 function buildScopeChips(container, selected = []) {
@@ -1033,7 +1218,13 @@ const dSaveBtn = document.getElementById('d-save');
 const dSaveLabel = dSaveBtn ? dSaveBtn.querySelector('.save-label') : null;
 const dSaveGlyph = dSaveBtn ? dSaveBtn.querySelector('.bookmark') : null;
 const dLikeCount = document.getElementById('d-like-count');
+const dReactionsEl = document.getElementById('d-reactions');
 const dCommentCount = document.getElementById('d-comment-count');
+/* fixed reaction set: keys match the server allow-list, glyphs are the only
+   thing rendered. 'heart' stays the legacy like (rendered via #d-like), so the
+   bar shows the other four. all glyphs are literals - no user text, no XSS. */
+const EMOJI = { heart: '♥', laugh: '😂', wow: '😮', sad: '😢', fire: '🔥' };
+const REACTION_KEYS = ['laugh', 'wow', 'sad', 'fire'];
 const dLikersEl = document.getElementById('d-likers');
 const dCommentsEl = document.getElementById('d-comments');
 const dCommentForm = document.getElementById('d-comment-form');
@@ -1050,7 +1241,7 @@ async function ensureUserMeta(force) {
 }
 function syncPostSocial(p) {
   const cp = communityPosts.find(x => x.id === p.postId);
-  if (cp) { cp.likes = p.likes; cp.comments = p.comments; }
+  if (cp) { cp.likes = p.likes; cp.reactions = p.reactions; cp.comments = p.comments; }
 }
 /* returns true when a username is a real member we can link to a profile */
 function isKnownMember(name) {
@@ -1089,13 +1280,52 @@ function renderSaveState(p) {
   if (dSaveLabel) dSaveLabel.textContent = saved ? 'SAVED' : 'SAVE';
   if (dSaveGlyph) dSaveGlyph.innerHTML = saved ? '&#9733;' : '&#9734;';   // filled vs outline star
 }
+/* the compact reaction bar: one chip per extra emoji (laugh/wow/sad/fire).
+   each chip shows the emoji + its count, highlights when the current user
+   picked it, and toggles on click. counts are numbers and glyphs come from
+   the fixed EMOJI map, so nothing user-typed touches innerHTML. */
+function renderReactions(p) {
+  if (!dReactionsEl) return;
+  const reactions = (p.reactions && typeof p.reactions === 'object') ? p.reactions : {};
+  dReactionsEl.innerHTML = '';
+  dReactionsEl.hidden = !me;
+  if (!me) return;
+  REACTION_KEYS.forEach(key => {
+    const users = Array.isArray(reactions[key]) ? reactions[key] : [];
+    const mine = users.includes(me.username);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'reaction' + (mine ? ' on' : '');
+    btn.setAttribute('aria-pressed', mine ? 'true' : 'false');
+    btn.title = key.toUpperCase();
+    btn.innerHTML = `<span class="r-emoji">${EMOJI[key]}</span>` +
+      (users.length ? `<span class="r-count">${users.length}</span>` : '');
+    btn.addEventListener('click', () => toggleReaction(p, key));
+    dReactionsEl.appendChild(btn);
+  });
+}
+async function toggleReaction(p, emoji) {
+  if (!p || !me || !REACTION_KEYS.includes(emoji)) return;
+  try {
+    const r = await api.call('POST', `/api/photos/${p.postId}/react`, { emoji });
+    // trust the server's returned maps so counts stay exact
+    p.reactions = (r.reactions && typeof r.reactions === 'object') ? r.reactions : {};
+    if (Array.isArray(r.likes)) p.likes = r.likes;
+    syncPostSocial(p);
+    renderSocial(p);
+  } catch (e) { toast(String(e.message || 'COULD NOT REACT').toUpperCase()); }
+}
 function renderSocial(p) {
   if (!p || !p.community) { dSocial.hidden = true; return; }
   dSocial.hidden = false;
   renderSaveState(p);
+  // "FIND ON SPHERE" only makes sense when this photo has a live card to spin to.
+  const locateBtn = document.getElementById('d-locate');
+  if (locateBtn) locateBtn.hidden = !postOnSphere(p.postId);
   const liked = !!(me && p.likes.includes(me.username));
   dLikeBtn.classList.toggle('liked', liked);
   dLikeCount.textContent = p.likes.length;
+  renderReactions(p);
   const n = p.comments.length;
   dCommentCount.textContent = `${n} COMMENT${n === 1 ? '' : 'S'}`;
   renderLikers(p);
@@ -1528,15 +1758,20 @@ function renderFlatView() {
   list.forEach(p => {
     const likes = Array.isArray(p.likes) ? p.likes.length : 0;
     const comments = Array.isArray(p.comments) ? p.comments.length : 0;
+    const onSphere = postOnSphere(p.postId);
     const card = document.createElement('button');
     card.className = 'flat-card';
     card.innerHTML =
+      `<span class="fc-media">` +
       `<img class="fc-img" src="${esc(p.src || p.heroSrc || '')}" alt="${esc(p.title)}">` +
+      (onSphere ? LOCATE_PIN_HTML : '') +
+      `</span>` +
       `<span class="fc-body">` +
       `<span class="fc-title">${esc(p.title)}</span>` +
       `<span class="mono dim fc-sub">@${esc(p.username || 'unknown')} <span class="fc-counts"><span>${likes} LIKE${likes === 1 ? '' : 'S'}</span><span>${comments} COMMENT${comments === 1 ? '' : 'S'}</span></span></span>` +
       `</span>`;
     card.addEventListener('click', () => openDetailFor(p));
+    wireLocatePin(card, p.postId);
     flatWrap.appendChild(card);
   });
 }
@@ -1691,6 +1926,7 @@ async function rebuildGallery() {
   buildFilterTags();
   applyFilter();
   updateEmptyWall();
+  renderMemoryRibbon();
   if (flatOpen) renderFlatView();
 }
 
@@ -1834,6 +2070,10 @@ async function loadNotifications() {
 function notifLabel(n) {
   const title = n.title || 'your photo';
   if (n.type === 'like') return `@${n.actor} liked ${title}`;
+  if (n.type === 'reaction') {
+    const glyph = EMOJI[n.text];
+    return `@${n.actor} reacted ${glyph || ''} to ${title}`;
+  }
   if (n.type === 'comment') return `@${n.actor} commented on ${title}`;
   if (n.type === 'mention') return `@${n.actor} mentioned you on ${title}`;
   return `@${n.actor} on ${title}`;
@@ -1933,6 +2173,7 @@ function hideEntryScreens() {
 }
 
 async function clearActiveCommunity() {
+  if (memoryRibbon) memoryRibbon.hidden = true;
   if (!currentCommunity && communityPosts.length === 0 && pool.length === 0) {
     updateCommunityHud();
     updateEmptyWall();
@@ -2317,10 +2558,17 @@ function renderCommunityRoom() {
   const pinned = new Set(currentCommunity.pinnedPostIds || []);
   const pinnedPosts = communityPosts.filter(p => pinned.has(p.id));
   pinnedPosts.forEach(post => {
+    const onSphere = postOnSphere(post.id);
     const tile = document.createElement('button');
     tile.className = 'mini-photo';
-    tile.innerHTML = `<img src="${esc(mediaSrc(post.file))}" alt="${esc(post.title || '')}"><span>${esc(post.title || 'UNTITLED')}</span>`;
+    tile.innerHTML =
+      `<span class="mp-media">` +
+      `<img src="${esc(mediaSrc(post.file))}" alt="${esc(post.title || '')}">` +
+      (onSphere ? LOCATE_PIN_HTML : '') +
+      `</span>` +
+      `<span>${esc(post.title || 'UNTITLED')}</span>`;
     tile.addEventListener('click', () => openDetailFor(postToProject(post)));
+    wireLocatePin(tile, post.id);
     pinnedWrap.appendChild(tile);
   });
   document.getElementById('room-pinned-empty').hidden = pinnedPosts.length > 0;
@@ -3460,6 +3708,9 @@ async function handleHashRoute() {
 window.addEventListener('hashchange', handleHashRoute);
 document.getElementById('d-share').addEventListener('click', () => {
   if (detailProject && detailProject.postId) copyRoute(photoRoute(detailProject.postId));
+});
+document.getElementById('d-locate').addEventListener('click', () => {
+  if (detailProject && detailProject.postId) focusCardOnSphere(detailProject.postId);
 });
 document.getElementById('d-download').addEventListener('click', () => {
   const p = detailProject;
