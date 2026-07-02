@@ -219,7 +219,7 @@
         <label class="mono">CLIENT<input id="de-client" maxlength="30"></label>
         <label class="mono">YEAR<input id="de-year" type="number" min="1900" max="2100"></label>
       </div>
-      <label class="mono">PLACE<input id="de-place" maxlength="60" placeholder="WHERE IT HAPPENED"></label>
+      <label class="mono">PLACE<input id="de-place" maxlength="80" placeholder="SEARCH A PLACE (CITY, REGION)&hellip;"></label>
       <label class="mono">PHOTO BIO<textarea id="de-caption" rows="3" maxlength="300"></textarea></label>
       <div class="field">
         <span class="mono">SCOPES - PICK UP TO 3</span>
@@ -492,6 +492,10 @@
     </div>
     <h1 class="people-title">PLACES</h1>
     <p id="atlas-sub" class="mono dim" hidden></p>
+    <div id="atlas-globe" class="atlas-globe" hidden>
+      <div id="atlas-globe-canvas" class="atlas-globe-canvas"></div>
+      <div id="atlas-globe-label" class="atlas-globe-label mono" hidden></div>
+    </div>
     <div id="atlas-grid" class="atlas-grid"></div>
     <p id="atlas-empty" class="mono dim" hidden>NO PLACES YET. ADD A PLACE WHEN YOU POST A PHOTO TO MAP YOUR MEMORIES.</p>
   </div>
@@ -740,7 +744,7 @@
     <img id="upload-preview" alt="" hidden>
     <div id="upload-batch" class="upload-batch"></div>
     <label class="mono">TITLE<input id="upload-title" maxlength="40" placeholder="UNTITLED"></label>
-    <label class="mono">PLACE<input id="upload-place" maxlength="60" placeholder="e.g. THE CABIN / TOKYO"></label>
+    <label class="mono">PLACE<input id="upload-place" maxlength="80" placeholder="SEARCH A PLACE (CITY, REGION)&hellip;"></label>
     <div class="pe-row">
       <label class="mono">CLIENT<input id="upload-client" maxlength="30" placeholder="YOU / A BRAND"></label>
       <label class="mono">YEAR<input id="upload-year" type="number" min="1900" max="2100"></label>

@@ -1,6 +1,7 @@
 import * as THREE from './js/vendor/three.module.js';
 import { esc, mediaSrc, avatarInner, wrap, nearestEquiv, timeAgo, coverDraw, drawShareBackdrop, fitHeadingFont, recapDateLabel, sanitizeBase } from './js/util.js';
 import { loadCors, renderRecapCard, renderAlbumContactSheet, downloadBlob, shareOrDownloadBlob } from './js/poster.js';
+import { createGlobe } from './js/globe.js';
 import { LOW_POWER, IMAGE_LOAD_CONCURRENCY } from './js/config.js';
 import { makeCardTexture, setCardAccent } from './js/textures.js';
 import { api } from './js/api.js';
@@ -35,6 +36,10 @@ function postToProject(p) {
     year: p.year || new Date(p.created).getFullYear(),
     caption: p.caption || '',
     place: p.place || '',
+    lat: Number.isFinite(p.lat) ? p.lat : null,
+    lng: Number.isFinite(p.lng) ? p.lng : null,
+    country: p.country || '',
+    state: p.state || '',
     layout: p.layout || 'full',
     logo: 'mono',
     community: true,
@@ -48,6 +53,13 @@ function postToProject(p) {
     reactions: (p.reactions && typeof p.reactions === 'object' && !Array.isArray(p.reactions)) ? p.reactions : {},
     comments: Array.isArray(p.comments) ? p.comments : [],
   };
+}
+/* Pull a photo's saved coordinates into the shape the place search expects, or
+   null when it has none. Used to seed the edit form so it never carries a
+   location picked for a different photo. */
+function geoOf(p) {
+  return (p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    ? { lat: p.lat, lng: p.lng, country: p.country || '', state: p.state || '' } : null;
 }
 function buildPool() {
   const pinned = new Set(currentCommunity && currentCommunity.pinnedPostIds || []);
@@ -426,26 +438,61 @@ function updateHover(now, sceneMoving) {
 }
 
 function hasGsapWork() {
-  return !!(gsap.globalTimeline && gsap.globalTimeline.isActive());
+  // The root timeline has no parent, so gsap.globalTimeline.isActive() is ALWAYS
+  // true - using it here kept the render loop re-queuing forever, so the sphere
+  // never idled. Instead ask whether any tween/timeline is still pending: the root
+  // auto-removes finished children, so a non-empty child list means an animation
+  // is genuinely in flight (this also covers a tween still in its start delay).
+  const tl = gsap.globalTimeline;
+  if (!tl) return false;
+  const kids = tl.getChildren(true, true, true);
+  if (!kids.length) return false;
+  // The slideshow/tour dwell timer is a long-lived (often endless) tween whose
+  // onUpdate only advances a DOM progress ring - it never touches the WebGL
+  // scene. Exclude it, else it would keep the sphere painting forever behind the
+  // opaque detail/cinema page during a slideshow (playing OR paused).
+  const idleTimer = slideshow && slideshow.tween;
+  return idleTimer ? kids.some(t => t !== idleTimer) : true;
 }
 
 function introDriftActive(now) {
   return introDone && !interacted && now < introDriftUntil && !ui.locked;
 }
 
+// The sphere's own physics have settled: no residual spin velocity, no gap
+// between target and current position, and the zoom has reached its target.
+// (Deliberately ignores drag/lock/drift, which are input state, not motion.)
+function sphereAtRest() {
+  return Math.abs(state.vx) <= LOW_POWER.idleVelocity
+    && Math.abs(state.vy) <= LOW_POWER.idleVelocity
+    && Math.abs(state.tx - state.cx) <= LOW_POWER.idlePosition
+    && Math.abs(state.ty - state.cy) <= LOW_POWER.idlePosition
+    && Math.abs(zoomState.target - zoomState.current) <= 0.01;
+}
+
 function galleryMoving(now = performance.now()) {
-  return drag.active || ui.locked || introDriftActive(now)
-    || Math.abs(state.vx) > LOW_POWER.idleVelocity
-    || Math.abs(state.vy) > LOW_POWER.idleVelocity
-    || Math.abs(state.tx - state.cx) > LOW_POWER.idlePosition
-    || Math.abs(state.ty - state.cy) > LOW_POWER.idlePosition
-    || Math.abs(zoomState.target - zoomState.current) > 0.01;
+  return drag.active || ui.locked || introDriftActive(now) || !sphereAtRest();
 }
 
 function queueRenderFrame() {
   if (renderLoopRunning) return;
   renderLoopRunning = true;
   requestAnimationFrame(renderFrame);
+}
+
+/* True while a full-screen, opaque page (detail, room, albums, people, atlas,
+   recap, flat view, admin, cinema, or the black auth screen) sits on top of the
+   sphere. Those pages hide the sphere completely, so there is no reason to keep
+   drawing it - the render loop below stops until the page closes and the sphere
+   is the visible view again. Only one view ever paints at a time.
+   NOTE: the landing / hub / invite entry screens are deliberately NOT listed -
+   they use a translucent backdrop, so the drifting sphere behind them is meant
+   to stay visible and animating. */
+function overlayCoveringSphere() {
+  return roomOpen || adminOpen || recapOpen || flatOpen || peopleOpen || atlasOpen || albumsOpen
+    || !authEl.hidden
+    || (detail && detail.style.display === 'block')
+    || (cinema && cinema.isOpen());
 }
 
 function renderFrame(now = performance.now()) {
@@ -455,8 +502,16 @@ function renderFrame(now = performance.now()) {
     return;
   }
   if (LOW_POWER.activeFps <= 0) { clock.getDelta(); return; }  // user paused rendering (0 fps)
+  // A page is covering the sphere - let that page own the GPU and idle here. We
+  // keep painting through the open/close slide (hasGsapWork) and while the sphere
+  // still has momentum to bleed off (sphereAtRest) so the reveal is smooth and
+  // never lurches, then fully stop once the page has settled on top.
+  if (overlayCoveringSphere() && !hasGsapWork() && sphereAtRest()) { clock.getDelta(); return; }
 
-  const active = sceneDirty || cardsAnimating || galleryMoving(now) || hasGsapWork();
+  // computed once per frame and reused below: hasGsapWork() walks the gsap
+  // timeline, and nothing between here and the re-queue creates or kills a tween.
+  const gsapWork = hasGsapWork();
+  const active = sceneDirty || cardsAnimating || galleryMoving(now) || gsapWork;
   const minFrameMs = 1000 / LOW_POWER.activeFps;
   if (active && lastFrameAt && now - lastFrameAt < minFrameMs) {
     queueRenderFrame();
@@ -493,13 +548,13 @@ function renderFrame(now = performance.now()) {
     }
   }
 
-  const movingNow = galleryMoving(now) || hasGsapWork();
+  const movingNow = galleryMoving(now) || gsapWork;
   const needsCardFrames = updateCards(dt);
   const hoverChanged = updateHover(now, movingNow);
   renderer.render(scene, camera);
   sceneDirty = false;
   cardsAnimating = needsCardFrames || hoverChanged;
-  if (sceneDirty || cardsAnimating || galleryMoving(now) || hasGsapWork()) queueRenderFrame();
+  if (sceneDirty || cardsAnimating || galleryMoving(now) || gsapWork) queueRenderFrame();
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -1328,6 +1383,7 @@ document.getElementById('d-edit-btn').addEventListener('click', () => {
   document.getElementById('de-client').value = p.client.startsWith('@') ? '' : p.client;
   document.getElementById('de-year').value = p.year;
   document.getElementById('de-place').value = p.place || '';
+  resetEditPlace(p.place || '', geoOf(p));   // seed geo from THIS photo so a prior pick can't leak in
   document.getElementById('de-caption').value = p.caption || '';
   document.getElementById('de-err').textContent = '';
   getDetailScopes = buildScopeChips(document.getElementById('de-scopes'), p.tags);
@@ -1349,6 +1405,7 @@ dEditForm.addEventListener('submit', async (e) => {
       client: document.getElementById('de-client').value.trim(),
       year: document.getElementById('de-year').value,
       place: document.getElementById('de-place').value.trim(),
+      ...(editGeo || { lat: null, lng: null, country: '', state: '' }),
       caption: document.getElementById('de-caption').value.trim(),
       tags: getDetailScopes(),
     });
@@ -2303,6 +2360,7 @@ function openFlatSearch(term) {
 
 function closeFlatView() {
   if (!flatOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
   flatQuery = '';
   flatSearchEl.value = '';
   flatSavedOnly = false;
@@ -2843,6 +2901,15 @@ async function enterCommunity(id, updateHash = true) {
     showAuth('login', { type: 'community', id });
     return false;
   }
+  // Leaving the current community: tear down any full-screen page that belonged
+  // to it. Otherwise switching (e.g. via a #/c/<id> link or back/forward) would
+  // strand a stale overlay on top of the new community's sphere, and because that
+  // overlay's open-flag stays true the sphere would sit paused/frozen behind it.
+  // (Each close is a no-op when its page isn't open.)
+  closeFlatView(); closeAlbums(); closePeople(); closeAtlas();
+  closeAdminPanel(); closeCommunityRoom(); closeRecap();
+  if (detail.style.display === 'block') closeProject();
+
   // load token: a faster second switch supersedes this one, so a stale response
   // never clobbers the newer community's data (mixed A-under-B renders).
   const token = ++communityLoadSeq;
@@ -3112,6 +3179,7 @@ async function openCommunityRoom() {
 
 function closeCommunityRoom() {
   if (!roomOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
   communityRoomEl.setAttribute('aria-hidden', 'true');
   gsap.to(communityRoomEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
@@ -3335,6 +3403,7 @@ async function openRecap(updateHash = true) {
 
 function closeRecap() {
   if (!recapOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
   recapOverlayEl.setAttribute('aria-hidden', 'true');
   gsap.to(recapOverlayEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
@@ -3562,6 +3631,7 @@ async function openAdminPanel() {
 
 function closeAdminPanel() {
   if (!adminOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
   communityAdminEl.setAttribute('aria-hidden', 'true');
   gsap.to(communityAdminEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
@@ -3808,6 +3878,9 @@ document.getElementById('hub-create').addEventListener('click', openCommunityMod
 document.getElementById('hub-enter-invite').addEventListener('click', openEnterInviteModal);
 document.getElementById('hub-back-home').addEventListener('click', () => showLanding(true));
 document.getElementById('hub-logout').addEventListener('click', logoutEverywhere);
+// the chicken mark doubles as a home button: it closes whatever is open and
+// returns to the hero/welcome page (same as the HOME buttons).
+document.querySelector('.logo').addEventListener('click', (e) => { e.preventDefault(); showLanding(true); });
 document.getElementById('invite-home').addEventListener('click', () => showLanding(true));
 document.getElementById('invite-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login', pendingInviteCode ? { type: 'invite', code: pendingInviteCode } : null); });
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
@@ -3860,6 +3933,7 @@ function openPeople(username, updateHash = true) {
 
 function closePeople() {
   if (!peopleOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
   if (viewingProfile) clearRouteIf(profileRoute(viewingProfile.username));
   if (!albumsOpen) setNav('gallery');
   peopleEl.setAttribute('aria-hidden', 'true');
@@ -3907,6 +3981,38 @@ const atlasGrid = document.getElementById('atlas-grid');
 const atlasEmpty = document.getElementById('atlas-empty');
 const atlasSub = document.getElementById('atlas-sub');
 let atlasOpen = false;
+let atlasGlobe = null;   // live Three.js globe instance while the atlas is open
+
+/* build/update the atlas globe from located places (those with coordinates);
+   clicking a pin shows its place + state/country and reveals that place's card. */
+function renderAtlasGlobe(places) {
+  const wrap = document.getElementById('atlas-globe');
+  const canvas = document.getElementById('atlas-globe-canvas');
+  const label = document.getElementById('atlas-globe-label');
+  const located = (places || []).filter(pl => Number.isFinite(pl.lat) && Number.isFinite(pl.lng));
+  // always show the globe in the Places view; with no located photos it simply
+  // shows the bare earth, inviting the user to add a location to a photo.
+  wrap.hidden = false;
+  label.hidden = true;
+  if (!located.length) { label.textContent = 'SEARCH A PLACE ON A PHOTO TO PIN IT HERE'; label.hidden = false; }
+  if (!atlasGlobe) {
+    atlasGlobe = createGlobe(canvas, {
+      onPick: pl => {
+        const geo = [pl.state, pl.country].filter(Boolean).join(', ');
+        label.textContent = geo ? `${pl.place}  ·  ${geo}` : pl.place;
+        label.hidden = !label.textContent;
+        const card = [...atlasGrid.querySelectorAll('.atlas-card')].find(el => el.dataset.place === (pl.place || ''));
+        if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.add('atlas-card-hit'); setTimeout(() => card.classList.remove('atlas-card-hit'), 1400); }
+      },
+    });
+  }
+  atlasGlobe.setPoints(located.map(pl => ({ lat: pl.lat, lng: pl.lng, place: pl.place, country: pl.country, state: pl.state, count: pl.count })));
+  requestAnimationFrame(() => atlasGlobe && atlasGlobe.resize());
+}
+
+function disposeAtlasGlobe() {
+  if (atlasGlobe) { atlasGlobe.dispose(); atlasGlobe = null; }
+}
 
 /* one place card: a cover image, the place label, a photo count badge, and a
    small thumbstrip. Clicking the card opens the proven flat search filtered by
@@ -3922,9 +4028,12 @@ function renderAtlas(data) {
   atlasSub.textContent = parts.join(' / ');
   atlasSub.hidden = !parts.length;
 
+  renderAtlasGlobe(places);
+
   places.forEach(pl => {
     const card = document.createElement('div');
     card.className = 'atlas-card';
+    card.dataset.place = pl.place;
     const coverFile = pl.cover && pl.cover.file;
     const cover = coverFile
       ? `<img src="${esc(mediaSrc(coverFile))}" alt="${esc(pl.place)}">`
@@ -3973,6 +4082,8 @@ function openAtlas() {
 
 function closeAtlas() {
   if (!atlasOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
+  disposeAtlasGlobe();
   if (!peopleOpen && !albumsOpen) setNav('gallery');
   atlasEl.setAttribute('aria-hidden', 'true');
   gsap.to(atlasEl, {
@@ -4032,6 +4143,7 @@ function openAlbums(albumId, updateHash = true) {
 }
 function closeAlbums() {
   if (!albumsOpen) return;
+  markSceneDirty();   // wake the sphere so it paints through the reveal
   if (viewingAlbum) clearRouteIf(albumRoute(viewingAlbum.album.id));
   if (!peopleOpen) setNav('gallery');
   albumsEl.setAttribute('aria-hidden', 'true');
@@ -4553,6 +4665,8 @@ function openUpload() {
     document.getElementById('upload-client').value = me.displayName;
   }
   getUploadScopes = buildScopeChips(document.getElementById('upload-scopes'), ['PHOTO']);
+  document.getElementById('upload-place').value = '';
+  resetUploadPlace('', null);   // fresh upload: never inherit a prior photo's picked location
   renderUploadPrompts();
   uploadModal.hidden = false;
   gsap.fromTo('.modal-box', { scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: 'power2.out' });
@@ -4607,6 +4721,60 @@ uploadFile.addEventListener('change', async () => {
   dropZone.firstChild.textContent = 'CHANGE PHOTO';
 });
 
+/* Place search: turn a PLACE text field into a geocoding search. Typing queries
+   /api/geocode (OpenStreetMap, server-side); picking a result stores the real
+   location (lat/lng + country/state) via setGeo so it can pin on the atlas
+   globe. Editing the text after a pick drops the coordinates so no stale pin is
+   saved. Derived from the input's own value - no per-field special-casing. */
+let uploadGeo = null;   // chosen location for the current upload (null = none picked)
+let editGeo = null;     // chosen location for the detail edit form
+function wirePlaceSearch(input, setGeo) {
+  if (!input) return () => {};
+  const wrap = input.parentElement;
+  wrap.style.position = 'relative';
+  const menu = document.createElement('div');
+  menu.className = 'place-results';
+  menu.hidden = true;
+  wrap.appendChild(menu);
+  let timer = null, picked = '';
+  const close = () => { menu.hidden = true; menu.innerHTML = ''; };
+  input.setAttribute('autocomplete', 'off');
+  input.addEventListener('input', () => {
+    if (input.value.trim() !== picked) setGeo(null);
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { close(); return; }
+    timer = setTimeout(async () => {
+      let results = [];
+      try { const r = await api.call('GET', '/api/geocode?q=' + encodeURIComponent(q)); results = r.results || []; }
+      catch { results = []; }
+      if (input.value.trim() !== q) return;   // a newer keystroke superseded this
+      if (!results.length) { close(); return; }
+      menu.innerHTML = '';
+      results.slice(0, 6).forEach(res => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'place-result mono';
+        opt.textContent = res.label;
+        opt.addEventListener('click', () => {
+          input.value = res.label;
+          picked = res.label;
+          setGeo({ lat: res.lat, lng: res.lng, country: res.country, state: res.state });
+          close();
+        });
+        menu.appendChild(opt);
+      });
+      menu.hidden = false;
+    }, 350);
+  });
+  input.addEventListener('blur', () => setTimeout(close, 160));   // let a click land first
+  // Sync the field to a known place + geo when a form opens. Without this the last
+  // picked location stays live and would be saved onto the next photo edited.
+  return (label, geo) => { picked = (label || '').trim(); setGeo(geo || null); close(); };
+}
+const resetUploadPlace = wirePlaceSearch(document.getElementById('upload-place'), g => { uploadGeo = g; });
+const resetEditPlace = wirePlaceSearch(document.getElementById('de-place'), g => { editGeo = g; });
+
 uploadSubmit.addEventListener('click', async () => {
   if (!uploadQueue.length) { uploadErr.textContent = 'PICK AN IMAGE FIRST.'; return; }
   uploadSubmit.disabled = true;
@@ -4621,6 +4789,7 @@ uploadSubmit.addEventListener('click', async () => {
         year: document.getElementById('upload-year').value,
         client: document.getElementById('upload-client').value.trim(),
         place: document.getElementById('upload-place').value.trim(),
+        ...(uploadGeo || {}),
         caption: document.getElementById('upload-caption').value.trim(),
         tags: getUploadScopes(),
         promptId: uploadPrompt.value,
@@ -4635,6 +4804,7 @@ uploadSubmit.addEventListener('click', async () => {
     uploadBatch.innerHTML = '';
     uploadTitle.value = '';
     document.getElementById('upload-place').value = '';
+    resetUploadPlace('', null);
     document.getElementById('upload-caption').value = '';
     dropZone.firstChild.textContent = 'CLICK TO CHOOSE A PHOTO';
     await loadCommunityExtras();

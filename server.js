@@ -14,7 +14,7 @@ const {
   savedPostIds, toggleSaved,
   saveDataUrlImage, safeUnlinkAsset, saveImage, deleteImage, addAudit, addNotification, publicNotification,
   memberList, publicPrompt, activityFeed, communityRecap, communityPulse, communityPlaces,
-  computeMilestones,
+  computeMilestones, sanitizeGeo, geocodePlace,
 } = require('./lib/helpers');
 
 // the fixed reaction allow-list. 'heart' is the legacy like; the rest are extra.
@@ -518,6 +518,17 @@ async function handleApi(req, res, pathname, params) {
       });
     }
 
+    /* ---------------- geocoding (place search for the atlas globe) ---------------- */
+    if (req.method === 'GET' && pathname === '/api/geocode') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      // this GET drives an outbound Nominatim request, so throttle it per IP too
+      // (the global write throttle only covers mutating methods).
+      if (tooManyWrites(req)) return send(res, 429, { error: 'Too many requests. Slow down.' });
+      const results = await geocodePlace(params.get('q') || '');
+      return send(res, 200, { results });
+    }
+
     /* ---------------- scoped photos ---------------- */
     if (req.method === 'GET' && pathname === '/api/photos') {
       const ctx = requireCommunity(req, res, params);
@@ -542,7 +553,8 @@ async function handleApi(req, res, pathname, params) {
         username: ctx.auth.user.username,
         title: clean(b.title, 40) || 'UNTITLED',
         client: clean(b.client, 30),
-        place: clean(b.place, 60),
+        place: clean(b.place, 80),
+        ...sanitizeGeo(b),   // lat, lng, country, state
         caption: clean(b.caption, 300),
         year: Number.isFinite(yr) && yr >= 1900 && yr <= 2100 ? yr : new Date().getFullYear(),
         tags: Array.isArray(b.tags) ? b.tags.slice(0, 8).map(t => clean(t, 20).toUpperCase()).filter(Boolean) : [],
@@ -751,7 +763,10 @@ async function handleApi(req, res, pathname, params) {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       if (b.title !== undefined) post.title = clean(b.title, 40) || 'UNTITLED';
       if (b.client !== undefined) post.client = clean(b.client, 30);
-      if (b.place !== undefined) post.place = clean(b.place, 60);
+      if (b.place !== undefined) post.place = clean(b.place, 80);
+      if (b.lat !== undefined || b.lng !== undefined || b.country !== undefined || b.state !== undefined) {
+        Object.assign(post, sanitizeGeo(b));   // lat, lng, country, state
+      }
       if (b.caption !== undefined) post.caption = clean(b.caption, 300);
       if (b.year !== undefined) {
         const y = parseInt(b.year, 10);

@@ -534,6 +534,22 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 .place-chip .place-pin { color: #616161; }
 .place-chip:hover .place-pin { color: #fff; }
 
+/* geocoding place-search dropdown (upload + edit PLACE fields) */
+.place-results {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+  background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 10px;
+  max-height: 240px; overflow-y: auto;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.55);
+}
+.place-result {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 12px; font-size: 12px; letter-spacing: .02em; color: #cfcfcf;
+  background: none; border: none; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.place-result + .place-result { border-top: 1px solid #1c1c1c; }
+.place-result:hover, .place-result:focus-visible { background: #1a1a1a; color: #fff; outline: none; }
+
 .d-hero {
   position: relative;
   margin: 44px 0; height: 64vh; overflow: hidden; background: #0d0d0d;
@@ -1460,6 +1476,19 @@ textarea { resize: vertical; }
   background: var(--overlay-bg); display: none; overflow-y: auto;
 }
 #atlas-sub { letter-spacing: .14em; font-size: 12px; margin: -18px 0 26px; }
+/* atlas globe - a centered hero that sits above the places grid */
+.atlas-globe { position: relative; max-width: 640px; margin: 56px auto 48px; }
+.atlas-globe-canvas { width: 100%; height: 440px; max-height: 56vh; }
+/* fill the container exactly at any device-pixel-ratio: setSize(w,h,false) leaves
+   the canvas with no CSS size, so without this it renders at its raw buffer size
+   (w * dpr) and overflows down onto the posts on hi-dpi/scaled displays. */
+.atlas-globe-canvas canvas { display: block; width: 100%; height: 100%; }
+.atlas-globe-label {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  background: rgba(10,10,12,0.86); border: 1px solid #2f2f2f; border-radius: 999px;
+  padding: 9px 18px; color: #eaeaea; font-size: 12px; letter-spacing: .05em;
+  white-space: nowrap; pointer-events: none; box-shadow: 0 10px 26px rgba(0,0,0,0.5);
+}
 .atlas-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
 }
@@ -1468,6 +1497,7 @@ textarea { resize: vertical; }
   transition: border-color .2s, transform .2s;
 }
 .atlas-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
+.atlas-card-hit { border-color: #7fdcff; box-shadow: 0 0 0 1px #7fdcff, 0 10px 30px rgba(127,220,255,0.16); transition: box-shadow .3s, border-color .3s; }
 .atlas-open {
   display: block; width: 100%; text-align: left; cursor: pointer;
 }
