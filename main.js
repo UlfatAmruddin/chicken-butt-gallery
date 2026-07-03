@@ -3093,7 +3093,11 @@ document.getElementById('enter-invite-go').addEventListener('click', () => {
   const code = parseInviteCode(document.getElementById('enter-invite-code').value);
   if (!code) { document.getElementById('enter-invite-err').textContent = 'PASTE AN INVITE CODE OR LINK.'; return; }
   closeEnterInviteModal();
-  setRoute(`invite/${code}`);
+  // open the invite view directly (setRoute mutes the hashchange, so it would only
+  // update the URL without ever running the router / showing the invite), then sync
+  // the URL so the invite stays shareable + refreshable.
+  replaceRoute(`invite/${code}`);
+  showInvite(code);
 });
 
 async function openInviteTools() {
