@@ -4205,7 +4205,7 @@ async function loadAtlas() {
   if (atlasOpen) renderAtlas(data);
 }
 
-document.getElementById('atlas-close').addEventListener('click', closeAtlas);
+document.getElementById('atlas-close').addEventListener('click', () => { closeAtlas(); setNav('gallery'); });
 
 /* ============================================================
    ALBUMS
@@ -4429,7 +4429,7 @@ async function albumOp(body, okMsg) {
   } catch (e) { toast(String(e.message || 'COULD NOT UPDATE').toUpperCase()); }
 }
 
-document.getElementById('albums-close').addEventListener('click', closeAlbums);
+document.getElementById('albums-close').addEventListener('click', () => { closeAlbums(); setNav('gallery'); });
 document.getElementById('album-back').addEventListener('click', showAlbumsList);
 
 /* album edit (name / description) */
@@ -4740,7 +4740,7 @@ logoutBtn.addEventListener('click', async () => {
   await logoutEverywhere();
 });
 
-document.getElementById('people-close').addEventListener('click', closePeople);
+document.getElementById('people-close').addEventListener('click', () => { closePeople(); setNav('gallery'); });
 document.getElementById('profile-back').addEventListener('click', showPeopleList);
 
 /* ============================================================

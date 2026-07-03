@@ -308,7 +308,7 @@ body[data-theme='light'] #settings-panel .sp-seg button.active { color: var(--su
 #settings-panel input[type="range"]::-moz-range-thumb { width: 15px; height: 15px; border-radius: 50%; background: #fff; border: none; cursor: pointer; }
 
 .pill-nav {
-  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 10;
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 65;
   display: flex; padding: 6px;
   background: rgba(26,26,26,0.9);
   border-radius: 999px;
@@ -1528,10 +1528,15 @@ textarea { resize: vertical; }
 .atlas-thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 
 /* ---------- community room / admin ---------- */
+/* focus pages sit ABOVE the persistent bottom nav (z-index 65) so the bar hides on
+   them (single photo detail is z-index 70; these are raised to 75) */
 #community-room, #community-admin, #recap-overlay {
-  position: fixed; inset: 0; z-index: 60;
+  position: fixed; inset: 0; z-index: 75;
   background: var(--overlay-bg); display: none; overflow-y: auto;
 }
+/* the section overlays sit UNDER the nav, so pad their scroll so the last items
+   clear the bar instead of hiding behind it */
+#people, #albums, #atlas, #flat-view { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
 #recap-close {
   color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px;
 }
