@@ -1015,7 +1015,15 @@ module.exports = { onRequest, handleApi };
 // works however the OS resolves it (Windows often prefers IPv6 ::1).
 if (require.main === module) {
   const PORT = process.env.PORT || 8173;
-  const HOST = process.env.HOST || '127.0.0.1';
-  http.createServer(onRequest).listen(PORT, HOST, () => console.log(`serving at http://localhost:${PORT}`));
-  if (!process.env.HOST) http.createServer(onRequest).listen(PORT, '::1').on('error', () => {});
+  if (process.env.PORT || process.env.HOST) {
+    // Hosted platform (Render/Railway/Fly): bind all interfaces so the platform's
+    // router can reach the process. These set PORT (and expect 0.0.0.0).
+    const HOST = process.env.HOST || '0.0.0.0';
+    http.createServer(onRequest).listen(PORT, HOST, () => console.log(`serving on ${HOST}:${PORT}`));
+  } else {
+    // Local dev: loopback only, both stacks so http://localhost works however the
+    // OS resolves it (Windows often prefers IPv6 ::1).
+    http.createServer(onRequest).listen(PORT, '127.0.0.1', () => console.log(`serving at http://localhost:${PORT}`));
+    http.createServer(onRequest).listen(PORT, '::1').on('error', () => {});
+  }
 }
