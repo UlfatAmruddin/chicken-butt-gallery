@@ -131,6 +131,12 @@ export function createGlobe(container, { onPick } = {}) {
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
 
+  // two-finger pinch-to-zoom (touch): wheel is desktop-only, so track active
+  // pointers and map the change in finger distance onto the eased targetZoom.
+  const activePointers = new Map();
+  let pinchStartDist = 0, pinchStartZoom = 0;
+  function pointerDist() { const p = [...activePointers.values()]; return p.length >= 2 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0; }
+
   // --- zoom: mouse wheel / trackpad scroll, eased toward a target distance ---
   const ZOOM_MIN = 1.7, ZOOM_MAX = 6;   // camera distance from the globe (smaller = closer in)
   let targetZoom = camera.position.z;
@@ -141,6 +147,13 @@ export function createGlobe(container, { onPick } = {}) {
   }
 
   function onDown(e) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size === 2) {   // second finger: switch from spin to pinch-zoom
+      dragging = false; moved = true;
+      pinchStartDist = pointerDist();
+      pinchStartZoom = targetZoom;
+      return;
+    }
     dragging = true; moved = false;
     lastX = e.clientX; lastY = e.clientY;
     renderer.domElement.style.cursor = 'grabbing';
@@ -148,6 +161,12 @@ export function createGlobe(container, { onPick } = {}) {
     requestFrame();
   }
   function onMove(e) {
+    if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size >= 2 && pinchStartDist > 0) {
+      const d = pointerDist();
+      if (d > 0) { targetZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * (pinchStartDist / d))); requestFrame(); }
+      return;   // pinching, not spinning
+    }
     if (!dragging) return;
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
@@ -159,6 +178,8 @@ export function createGlobe(container, { onPick } = {}) {
     requestFrame();
   }
   function onUp(e) {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) pinchStartDist = 0;
     dragging = false;
     renderer.domElement.style.cursor = 'grab';
     if (!moved) pick(e);
@@ -176,6 +197,7 @@ export function createGlobe(container, { onPick } = {}) {
   renderer.domElement.addEventListener('pointermove', onMove);
   renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
 
   function resize() {
     const w = container.clientWidth || 1, h = container.clientHeight || 1;
@@ -230,6 +252,7 @@ export function createGlobe(container, { onPick } = {}) {
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('wheel', onWheel);
     window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
     clearPins();
     pinGeo.dispose(); stemGeo.dispose(); pinMat.dispose(); stemMat.dispose();
     earth.geometry.dispose(); earth.material.dispose(); earthTex.dispose();

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Chicken Butt Gallery</title>
 <link rel="stylesheet" href="styles.css"/>
 <script src="js/vendor/gsap.min.js"></script>
@@ -122,6 +122,15 @@
 <button id="poster-chip" class="mono" hidden title="Save the whole sphere as a shareable mosaic poster" aria-label="Save the whole sphere as a shareable mosaic poster">Poster</button>
 <button id="surprise-chip" class="mono" hidden title="Jump to a random memory (R)" aria-label="Surprise me: spin the sphere to a random memory">Surprise</button>
 <span id="poster-building" class="mono dim" hidden>BUILDING POSTER&hellip;</span>
+</div>
+
+<!-- mobile: the top-left chips are hidden on phones; this opens them as a sheet -->
+<button id="hud-more-btn" class="mono" aria-label="More community actions" aria-expanded="false" hidden>&#8942;&nbsp;More</button>
+<div id="hud-more-sheet" role="dialog" aria-label="Community actions" hidden>
+  <button id="hs-community" class="mono">View / switch community</button>
+  <button id="hs-admin" class="mono" hidden>Admin &amp; invite tools</button>
+  <button id="hs-recap" class="mono">Recap</button>
+  <button id="hud-more-close" class="mono">Close</button>
 </div>
 
 <!-- ======= ON THIS DAY RIBBON ======= -->
@@ -379,7 +388,7 @@
         </div>
         <label class="mono">DISPLAY NAME<input id="pe-name" maxlength="40"></label>
         <label class="mono">BIO<textarea id="pe-bio" maxlength="280" rows="3"></textarea></label>
-        <div class="pe-row">
+        <div class="pe-row pe-row-fields">
           <label class="mono">LOCATION<input id="pe-location" maxlength="60"></label>
           <label class="mono">WEBSITE<input id="pe-website" maxlength="120" placeholder="https://&hellip;"></label>
         </div>

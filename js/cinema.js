@@ -118,6 +118,19 @@ export function initCinema({ getProject, step, isPlaying, togglePlay, isPlayable
   // does not funnel through fillDetail(), so reflect the new state directly.
   btnPlay.addEventListener('click', () => { if (togglePlay) togglePlay(); reflectPlaying(); });
 
+  // touch: horizontal swipe advances the photo (mobile equivalent of the arrows)
+  let sx = 0, sy = 0, tracking = false;
+  layer.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { tracking = false; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+  }, { passive: true });
+  layer.addEventListener('touchend', (e) => {
+    if (!tracking) return; tracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && step) step(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
   // if the user leaves native fullscreen (Esc / OS chrome), fold the overlay too
   const onFsChange = () => { if (open && !fsElement()) hide(); };
   document.addEventListener('fullscreenchange', onFsChange);

@@ -2595,6 +2595,10 @@ const communityEmptyEl = document.getElementById('community-empty');
 const communityChip = document.getElementById('community-chip');
 const inviteToolsBtn = document.getElementById('invite-tools-btn');
 const recapChip = document.getElementById('recap-chip');
+const hudMoreBtn = document.getElementById('hud-more-btn');
+const hudMoreSheet = document.getElementById('hud-more-sheet');
+const hsAdminBtn = document.getElementById('hs-admin');
+const hsRecapBtn = document.getElementById('hs-recap');
 const posterChip = document.getElementById('poster-chip');
 const communityRoomEl = document.getElementById('community-room');
 const communityAdminEl = document.getElementById('community-admin');
@@ -2781,15 +2785,19 @@ function updateCommunityHud() {
     if (surpriseChip) surpriseChip.hidden = true;
     recapChip.hidden = true;
     if (posterChip) posterChip.hidden = true;
+    if (hudMoreBtn) hudMoreBtn.hidden = true;
     return;
   }
   communityChip.hidden = false;
   communityChip.textContent = currentCommunity.name.toUpperCase();
   inviteToolsBtn.hidden = !(isCommunityAdmin() || isAdminProfile());
   inviteToolsBtn.textContent = 'Admin';
-  // recap is for everyone, but stays out of the entry screens and off mobile
-  const narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
-  recapChip.hidden = document.body.classList.contains('entry-mode') || narrow;
+  // recap is for everyone, but stays out of the entry screens. CSS hides the desktop
+  // chip on mobile; the "More" sheet re-exposes recap/admin there instead.
+  recapChip.hidden = document.body.classList.contains('entry-mode');
+  if (hudMoreBtn) hudMoreBtn.hidden = false;
+  if (hsAdminBtn) hsAdminBtn.hidden = inviteToolsBtn.hidden;
+  if (hsRecapBtn) hsRecapBtn.hidden = recapChip.hidden;
   // the tour needs at least two photos to loop through; hide it otherwise so
   // it never becomes a dead button (mirrors the recap chip's placement rules).
   if (tourChip) tourChip.hidden = recapChip.hidden || pool.length < 2;
@@ -3976,6 +3984,15 @@ document.getElementById('invite-join').addEventListener('click', () => joinInvit
 communityChip.addEventListener('click', openCommunityRoom);
 inviteToolsBtn.addEventListener('click', openAdminPanel);
 recapChip.addEventListener('click', () => openRecap());
+// mobile "More" sheet mirrors the chips CSS hides on phones (community / admin / recap)
+if (hudMoreBtn && hudMoreSheet) {
+  const closeMore = () => { hudMoreSheet.hidden = true; hudMoreBtn.setAttribute('aria-expanded', 'false'); };
+  hudMoreBtn.addEventListener('click', () => { hudMoreSheet.hidden = false; hudMoreBtn.setAttribute('aria-expanded', 'true'); });
+  document.getElementById('hud-more-close').addEventListener('click', closeMore);
+  document.getElementById('hs-community').addEventListener('click', () => { closeMore(); openCommunityRoom(); });
+  hsAdminBtn.addEventListener('click', () => { closeMore(); openAdminPanel(); });
+  hsRecapBtn.addEventListener('click', () => { closeMore(); openRecap(); });
+}
 if (posterChip) posterChip.addEventListener('click', () => {
   // prefer the native share sheet where it exists (mobile), else save the file
   if (navigator.share) shareMosaicPoster();
