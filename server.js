@@ -11,7 +11,7 @@ const {
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
   requestCommunityId, joinedCommunities, resolveCommunityForAuth, requireAuth, requireCommunity,
   scopedPosts, scopedAlbums, userPhotoCount, publicProfile, albumCoverFile, publicAlbum,
-  communityCoverFile, publicCommunity, canManagePost, assertSameCommunityPhoto,
+  communityCoverFile, publicCommunity, invitePreview, inviteUsable, canManagePost, assertSameCommunityPhoto,
   savedPostIds, toggleSaved,
   saveDataUrlImage, safeUnlinkAsset, saveImage, deleteImage, addAudit, addNotification, publicNotification,
   memberList, publicPrompt, activityFeed, communityRecap, communityPulse, communityPlaces,
@@ -20,6 +20,12 @@ const {
 
 // the fixed reaction allow-list. 'heart' is the legacy like; the rest are extra.
 const REACTION_EMOJI = ['heart', 'laugh', 'wow', 'sad', 'fire'];
+
+// invite lifecycle + per-account resource caps (bound single-account abuse of the
+// growing JSON collections; admins bypass the community cap).
+const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;   // leaked invite links stop working after 14 days
+const MAX_COMMUNITIES_PER_USER = 50;
+const MAX_ACTIVE_INVITES_PER_COMMUNITY = 20;
 
 /* ---------------- API ---------------- */
 async function handleApi(req, res, pathname, params) {
@@ -152,6 +158,11 @@ async function handleApi(req, res, pathname, params) {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const name = clean(b.name, 60);
       if (!name) return send(res, 400, { error: 'Name your community first.' });
+      // cap communities per owner so one account can't inflate communities.json without bound
+      if (!isAdminUsername(auth.user.username) &&
+          communities.filter(c => c.owner === auth.user.username).length >= MAX_COMMUNITIES_PER_USER) {
+        return send(res, 429, { error: 'You have reached the maximum number of communities.' });
+      }
       const id = uniqueCommunityId(name);
       const community = {
         id,
@@ -442,11 +453,27 @@ async function handleApi(req, res, pathname, params) {
       const c = findCommunity(seg[2]);
       if (!c) return send(res, 404, { error: 'No such community.' });
       if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can create invites.' });
+      const raw = String(await readBody(req, 8 * 1024).catch(() => Buffer.from('')));
+      const b = raw ? JSON.parse(raw) : {};
+      // opportunistically drop revoked/expired invites so invites.json stays bounded
+      for (let i = invites.length - 1; i >= 0; i--) {
+        const inv = invites[i];
+        if (inv.revoked || (inv.expiresAt && Date.now() > inv.expiresAt)) invites.splice(i, 1);
+      }
+      if (invites.filter(i => i.communityId === c.id && inviteUsable(i)).length >= MAX_ACTIVE_INVITES_PER_COMMUNITY) {
+        return send(res, 429, { error: 'Too many active invites. Revoke some first.' });
+      }
+      const now = Date.now();
+      const maxUsesRaw = Math.floor(Number(b.maxUses));
+      const maxUses = Number.isFinite(maxUsesRaw) && maxUsesRaw > 0 ? Math.min(maxUsesRaw, 1000) : 0; // 0 = unlimited until expiry
       const invite = {
         code: crypto.randomBytes(12).toString('hex'),
         communityId: c.id,
         createdBy: auth.user.username,
-        created: Date.now(),
+        created: now,
+        expiresAt: now + INVITE_TTL_MS,
+        maxUses,
+        uses: 0,
         revoked: false,
       };
       invites.push(invite);
@@ -456,18 +483,20 @@ async function handleApi(req, res, pathname, params) {
     }
 
     if (req.method === 'GET' && seg[1] === 'invites' && seg[2] && !seg[3]) {
-      const invite = invites.find(i => i.code === seg[2] && !i.revoked);
-      if (!invite) return send(res, 404, { error: 'Invite not found.' });
+      const invite = invites.find(i => i.code === seg[2]);
+      if (!inviteUsable(invite)) return send(res, 404, { error: 'Invite not found.' });
       const c = findCommunity(invite.communityId);
       if (!c) return send(res, 404, { error: 'Community not found.' });
-      return send(res, 200, { code: invite.code, community: publicCommunity(c) });
+      // unauthenticated endpoint: return only a minimal preview (never the owner
+      // identity or a cover/photo URL, which would leak a private-community image).
+      return send(res, 200, { code: invite.code, community: invitePreview(c) });
     }
 
     if (req.method === 'POST' && seg[1] === 'invites' && seg[2] && seg[3] === 'join') {
       const auth = requireAuth(req, res);
       if (!auth) return;
-      const invite = invites.find(i => i.code === seg[2] && !i.revoked);
-      if (!invite) return send(res, 404, { error: 'Invite not found.' });
+      const invite = invites.find(i => i.code === seg[2]);
+      if (!inviteUsable(invite)) return send(res, 404, { error: 'Invite not found.' });
       const c = findCommunity(invite.communityId);
       if (!c) return send(res, 404, { error: 'Community not found.' });
       if (communityBans(c)[auth.user.username]) return send(res, 403, { error: 'You cannot join this community.' });
@@ -475,6 +504,10 @@ async function handleApi(req, res, pathname, params) {
       if (!members[auth.user.username]) {
         members[auth.user.username] = 'member';
         addAudit(c.id, auth.user.username, 'member.joined', auth.user.username);
+        // count the redemption and consume the code once a limited-use invite is spent
+        invite.uses = (invite.uses || 0) + 1;
+        if (invite.maxUses && invite.uses >= invite.maxUses) invite.revoked = true;
+        saveJSON('invites.json', invites);
       }
       saveJSON('communities.json', communities);
       return send(res, 200, publicCommunity(c, auth.user.username));
@@ -939,15 +972,42 @@ function appInit() {
    function can be frozen the instant the response is sent. res._flushDone lets
    onRequest await the write so the handler promise never resolves mid-flush. */
 function withFlush(res) {
+  const realWriteHead = res.writeHead.bind(res);
+  const realWrite = res.write.bind(res);
   const realEnd = res.end.bind(res);
-  let started = false;
+  let head = null;        // buffered writeHead(status, headers), not yet on the wire
+  let sent = false;       // has the buffered head been committed to the socket?
+  let ended = false;
   res._flushDone = Promise.resolve();
+
+  // Buffer the status line + headers instead of committing them immediately, so a
+  // FAILED durable write can still downgrade the response to 503 - once writeHead
+  // reaches the socket the status is locked in and cannot be undone.
+  const flushHead = () => { if (head && !sent) { sent = true; realWriteHead(...head); } };
+  res.writeHead = function (...args) { head = args; return res; };
+  // A streamed body chunk forces the buffered head out and disables gating. Nothing
+  // in this app streams a mutating response, but stay correct if that ever changes.
+  res.write = function (...args) { flushHead(); return realWrite(...args); };
+
   res.end = function (chunk, encoding, cb) {
-    if (started) return realEnd(chunk, encoding, cb);
-    started = true;
+    if (ended) return realEnd(chunk, encoding, cb);
+    ended = true;
+    if (sent) {   // head already committed (streamed response): just flush, then end
+      res._flushDone = Promise.resolve(storeFlush()).catch((err) => console.error('[store]', err && err.message));
+      return realEnd(chunk, encoding, cb);
+    }
+    // Head still buffered: gate it on the durable write. Persist FIRST; only ACK the
+    // real response once the write is safe. If it fails, never report success -
+    // reply 503 so the client knows the change was not saved and can retry.
     res._flushDone = Promise.resolve(storeFlush())
-      .catch((err) => console.error('[store]', err && err.message))
-      .then(() => { realEnd(chunk, encoding, cb); });
+      .then(() => { flushHead(); realEnd(chunk, encoding, cb); })
+      .catch((err) => {
+        console.error('[store]', err && err.message);
+        head = [503, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })];
+        sent = false;
+        flushHead();
+        realEnd(JSON.stringify({ error: 'Not saved - please retry.' }));
+      });
     return res;
   };
 }
