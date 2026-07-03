@@ -4723,7 +4723,6 @@ logoutBtn.addEventListener('click', async () => {
   await logoutEverywhere();
 });
 
-document.getElementById('lets-talk').addEventListener('click', () => openPeople());
 document.getElementById('people-close').addEventListener('click', closePeople);
 document.getElementById('profile-back').addEventListener('click', showPeopleList);
 

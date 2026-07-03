@@ -245,15 +245,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: #fff; border: none; cursor: pointer;
 }
 
-.lets-talk {
-  position: fixed; top: 20px; right: 22px; z-index: 10;
-  background: #fff; color: #000;
-  font-size: 16px; font-weight: 500;
-  padding: 16px 30px; border-radius: 999px;
-  transition: transform 0.3s cubic-bezier(.2,.7,.2,1);
-}
-.lets-talk:hover { transform: scale(1.06); }
-
 /* ---------- bottom HUD ---------- */
 .view-toggles {
   position: fixed; bottom: 22px; left: 22px; z-index: 10;
@@ -467,7 +458,6 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 .entry-mode .pill-nav,
 .entry-mode #filter-btn,
 .entry-mode #sound-wrap,
-.entry-mode .lets-talk,
 .entry-mode #me-chip,
 .entry-mode #notif-btn,
 .entry-mode #community-chip,
@@ -905,10 +895,13 @@ textarea { resize: vertical; }
 #auth-form .pill-white { width: 100%; margin-top: 8px; }
 
 /* ---------- HUD additions ---------- */
-#me-chip {
-  position: fixed; top: 34px; right: 170px; z-index: 10;
-  color: #cfcfcf;
+/* top-right HUD: notification bell + @username chip, packed from the right edge
+   so the chip sits in the corner and the bell never drifts with username length */
+#hud-right {
+  position: fixed; top: 22px; right: 22px; z-index: 10;
+  display: flex; align-items: center; gap: 12px;
 }
+#me-chip { color: #cfcfcf; }
 #me-chip:hover { color: #fff; }
 /* HUD chip row: one flex container so chips pack and adapt to label length
    instead of each carrying a hand-tuned left offset that drifts when a label
@@ -972,7 +965,7 @@ textarea { resize: vertical; }
 
 /* ---------- notifications inbox ---------- */
 #notif-btn {
-  position: fixed; top: 26px; right: 118px; z-index: 10;
+  position: relative;
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: rgba(38,38,38,0.86);
@@ -1995,7 +1988,6 @@ textarea { resize: vertical; }
 .pill-white:active,
 .ghost-pill:active,
 #empty-wall button:active,
-.lets-talk:active,
 .circle-btn:active,
 .pill-nav button:active,
 #filter-btn:active,
@@ -2080,7 +2072,6 @@ a:focus-visible,
   }
   /* neutralise hover-lift + press transforms site-wide */
   #empty-wall button:hover, #empty-wall button:active,
-  .lets-talk:hover, .lets-talk:active,
   .logo:hover,
   .circle-btn:hover, .circle-btn:active,
   #filter-btn:hover, #filter-btn:active,
