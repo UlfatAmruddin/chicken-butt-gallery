@@ -2179,7 +2179,7 @@ html, body {
   /* --- hub "More" sheet: re-expose the chips CSS hides on phones --- */
   #hud-more-btn {
     display: inline-flex; align-items: center; gap: 6px;
-    position: fixed; top: 30px; left: 72px; z-index: 12;
+    position: fixed; top: 20px; left: 72px; z-index: 12;
     min-height: 44px; padding: 8px 16px;
     border-radius: 999px; border: 1px solid #333;
     background: rgba(20,20,20,0.9); color: #fff;
