@@ -185,6 +185,8 @@ const BASE_ROWS = 14;
 const BASE_R = 30;
 const BASE_CELL = (2 * Math.PI * BASE_R) / BASE_COLS;       // seamless horizontal wrap
 const FOV = 40;
+const MIN_FOV = 24;      // most zoomed-in
+const MAX_FOV = 74;      // most zoomed-out (pinch/wheel)
 const layout = {
   cols: BASE_COLS,
   rows: BASE_ROWS,
@@ -566,13 +568,30 @@ document.addEventListener('visibilitychange', () => {
    INPUT - drag with momentum, wheel, click vs drag
    ============================================================ */
 const drag = { active: false, id: null, px: 0, py: 0, t: 0, lastT: 0, moved: 0 };
+// active pointers (for two-finger pinch-to-zoom on touch)
+const pointers = new Map();
+const pinch = { active: false, startDist: 0, startFov: 0 };
+function pinchDist() {
+  const p = [...pointers.values()];
+  return p.length >= 2 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0;
+}
 
 canvas.addEventListener('pointerdown', (e) => {
   if (ui.locked) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    // second finger down: switch from rotate to pinch-zoom
+    pinch.active = true;
+    pinch.startDist = pinchDist();
+    pinch.startFov = zoomState.target;
+    drag.active = false;
+    canvas.classList.remove('dragging');
+    return;
+  }
   interacted = true;
   drag.active = true;
   drag.id = e.pointerId;
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   drag.px = e.clientX; drag.py = e.clientY;
   drag.t = drag.lastT = performance.now();
   drag.moved = 0;
@@ -587,6 +606,16 @@ canvas.addEventListener('pointermove', (e) => {
   mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   mouseHas = true;
   markHoverDirty();
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch.active && pointers.size >= 2) {
+    const d = pinchDist();
+    if (d > 0 && pinch.startDist > 0) {
+      zoomState.target = THREE.MathUtils.clamp(pinch.startFov * (pinch.startDist / d), MIN_FOV, MAX_FOV);
+      userZoomed = true;
+      markSceneDirty();
+    }
+    return;   // pinching, not rotating
+  }
   if (!drag.active || e.pointerId !== drag.id) return;
   const now = performance.now();
   const dtm = Math.max((now - drag.lastT) / 1000, 0.001);
@@ -614,6 +643,8 @@ canvas.addEventListener('pointerleave', () => {
 });
 
 function endDrag(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch.active = false;
   if (!drag.active || e.pointerId !== drag.id) return;
   drag.active = false;
   canvas.classList.remove('dragging');
@@ -632,14 +663,31 @@ function endDrag(e) {
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
 
-/* scroll wheel = zoom in/out (smoothly lerped FOV) */
-const zoomState = { target: FOV, current: FOV };
+/* Aspect-aware default framing. The camera sits at the sphere's centre, so on a
+   narrow portrait phone a 40deg vertical FOV shows too little width and the tiles
+   balloon. Widen the default FOV as the viewport narrows, capped to avoid fisheye. */
+function defaultFov() {
+  const a = camera.aspect || 1;
+  if (a >= 1) return FOV;
+  return THREE.MathUtils.clamp((FOV / a) * 0.72, FOV, 66);
+}
+
+/* zoom = smoothly lerped FOV, driven by the wheel (desktop) and pinch (touch). */
+const zoomState = { target: defaultFov(), current: defaultFov() };
+let userZoomed = false;
+camera.fov = zoomState.current;
+camera.updateProjectionMatrix();
+
 window.addEventListener('wheel', (e) => {
   if (ui.locked || overlayOpen() || shortcutsOpen()) return;
   interacted = true;
-  zoomState.target = THREE.MathUtils.clamp(zoomState.target + e.deltaY * 0.022, 26, 62);
+  userZoomed = true;
+  zoomState.target = THREE.MathUtils.clamp(zoomState.target + e.deltaY * 0.022, MIN_FOV, MAX_FOV);
   markSceneDirty();
 }, { passive: true });
+
+// re-frame the default on rotate/resize, unless the user has taken manual control
+window.addEventListener('resize', () => { if (!userZoomed) { zoomState.target = defaultFov(); markSceneDirty(); } }, { passive: true });
 
 function tryClick() {
   raycaster.setFromCamera(mouse, camera);

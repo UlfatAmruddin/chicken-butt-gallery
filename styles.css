@@ -1897,8 +1897,25 @@ textarea { resize: vertical; }
     width: 100%;
   }
   #community-chip, #invite-tools-btn, #tour-chip, #recap-chip, #poster-chip, #poster-building, #surprise-chip { display: none; }
-  /* keep the 4-item nav pill on one line on narrow screens */
-  .pill-nav button { padding: 12px 16px; font-size: 14px; }
+  /* full-width bottom tab bar so all 6 items fit + never collide with Filter */
+  .pill-nav {
+    left: 10px; right: 10px; bottom: 12px; transform: none; width: auto;
+    justify-content: space-between; padding: 5px; gap: 2px;
+  }
+  .pill-nav button { flex: 1 1 0; min-width: 0; padding: 12px 4px; font-size: 12px; text-align: center; }
+  /* secondary controls form a rail just ABOVE the nav bar, clear of it */
+  .view-toggles { bottom: 72px; left: 12px; }
+  #settings-btn { bottom: 72px; left: auto; right: 72px; }
+  #settings-panel { bottom: 132px; left: 12px; right: auto; width: calc(100vw - 24px); max-width: 300px; }
+  #filter-btn { width: 50px; height: 50px; font-size: 12px; bottom: 72px; right: 12px; }
+  #filter-panel { bottom: 132px; right: 12px; left: auto; width: calc(100vw - 24px); max-width: 320px; }
+  /* overlay headers (photo detail, people, albums, atlas, room, admin, recap):
+     let the back / prev-next / profile controls wrap instead of colliding */
+  .detail-top { flex-wrap: wrap; gap: 10px 14px; padding-top: 18px; }
+  #back-btn { font-size: 13px; padding: 6px 0; }
+  .d-nav button, #d-client-top { font-size: 11px; }
+  #d-client-top { flex-basis: 100%; text-align: left; }
+  #d-title { font-size: clamp(38px, 11vw, 64px); }
   .room-grid, .admin-grid { grid-template-columns: 1fr; }
   .recap-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .recap-actions { gap: 14px 18px; }
