@@ -1,0 +1,23 @@
+# Never bundle runtime state or secrets into the Vercel deployment, independent of
+# .gitignore. Do NOT add lib/ here: the api/ function requires ../server.js which
+# pulls in lib/*. Static assets (index.html, main.js, styles.css, js/**,
+# assets/fonts/**) must stay so the CDN can serve them.
+
+# Runtime data (password hashes, session tokens, posts, ...) - never deploy
+data/
+
+# User uploads (served from Supabase in production, not the bundle)
+assets/uploads/
+assets/avatars/
+assets/community/
+backups/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+.supabase.json
+
+# Dev-only tooling not used at runtime
+scripts/
+.git/

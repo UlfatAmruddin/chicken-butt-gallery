@@ -1,0 +1,14 @@
+{
+  "name": "chicken-butt-gallery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chicken Butt Gallery: a zero-dependency Node.js photo gallery with a Three.js sphere and Places atlas.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "seed:kv": "node scripts/seed-supabase-kv.js"
+  }
+}

@@ -1,9 +1,10 @@
 const http = require('http');
 const crypto = require('crypto');
 
-const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON } = require('./lib/store');
+const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON, init: storeInit, flush: storeFlush } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
 const {
+  migrateCommunities,
   send, readBody, authUser, createSession, tooManyAuthAttempts, tooManyWrites, hashPass,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
@@ -918,13 +919,57 @@ async function handleApi(req, res, pathname, params) {
 }
 
 /* ---------------- server ---------------- */
-function onRequest(req, res) {
+
+/* One-time per-process startup: load the collections from the store, then run
+   the in-place data migration once. Awaited at the top of every request so a
+   fresh serverless instance (or a normal boot) is fully ready before serving. */
+let appReady = null;
+function appInit() {
+  if (appReady) return appReady;
+  appReady = (async () => {
+    await storeInit();
+    migrateCommunities();
+    await storeFlush();   // persist any migration writes now, not on a later request's res.end
+  })().catch((e) => { appReady = null; throw e; });   // don't cache a rejection: a transient
+  return appReady;                                    // store outage must not brick the instance
+}
+
+/* Persist anything mutated during the request before the response is finalized.
+   We intercept res.end so the flush runs even on a serverless host, where the
+   function can be frozen the instant the response is sent. res._flushDone lets
+   onRequest await the write so the handler promise never resolves mid-flush. */
+function withFlush(res) {
+  const realEnd = res.end.bind(res);
+  let started = false;
+  res._flushDone = Promise.resolve();
+  res.end = function (chunk, encoding, cb) {
+    if (started) return realEnd(chunk, encoding, cb);
+    started = true;
+    res._flushDone = Promise.resolve(storeFlush())
+      .catch((err) => console.error('[store]', err && err.message))
+      .then(() => { realEnd(chunk, encoding, cb); });
+    return res;
+  };
+}
+
+async function onRequest(req, res) {
+  try {
+    await appInit();
+  } catch (err) {
+    console.error('[init]', err && err.message);
+    res.writeHead(503, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
+    res.end('service unavailable');
+    return;
+  }
+  withFlush(res);
+
   let u;
   try {
     u = new URL(req.url, 'http://localhost');
   } catch {
     res.writeHead(400, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
     res.end('bad request');
+    await res._flushDone;
     return;
   }
 
@@ -934,16 +979,43 @@ function onRequest(req, res) {
   } catch {
     res.writeHead(400, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
     res.end('bad request');
+    await res._flushDone;
     return;
   }
 
-  if (pathname.startsWith('/api/')) { handleApi(req, res, pathname, u.searchParams); return; }
-  serveStatic(req, res, pathname);
+  try {
+    if (pathname.startsWith('/api/')) {
+      await handleApi(req, res, pathname, u.searchParams);
+    } else {
+      // serveStatic finishes inside an async fs.readFile callback and returns
+      // nothing to await, so wait for the response itself to complete - otherwise
+      // this handler could resolve (and a serverless host freeze) before the file
+      // is written. Static routes never mutate, so no flush is involved.
+      await new Promise((resolve) => {
+        res.once('finish', resolve);
+        res.once('close', resolve);
+        serveStatic(req, res, pathname);
+      });
+    }
+  } catch (err) {
+    console.error('[handler]', err && err.message);
+    if (!res.headersSent) {
+      res.writeHead(500, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
+      res.end('server error');
+    }
+  }
+  await res._flushDone;
 }
 
-// Listen on BOTH loopback stacks (127.0.0.1 and ::1) so http://localhost:8173
-// works however the OS resolves 'localhost' (Windows often prefers IPv6 ::1),
-// while staying loopback-only - not reachable from the LAN. The IPv6 listener
-// no-ops if ::1 is unavailable.
-http.createServer(onRequest).listen(8173, '127.0.0.1', () => console.log('serving at http://localhost:8173'));
-http.createServer(onRequest).listen(8173, '::1').on('error', () => {});
+module.exports = { onRequest, handleApi };
+
+// Local dev only: bind a long-lived listener. On a serverless host this module
+// is imported (require.main !== module) and the exported handler is invoked per
+// request, so nothing listens. Bind BOTH loopback stacks so http://localhost
+// works however the OS resolves it (Windows often prefers IPv6 ::1).
+if (require.main === module) {
+  const PORT = process.env.PORT || 8173;
+  const HOST = process.env.HOST || '127.0.0.1';
+  http.createServer(onRequest).listen(PORT, HOST, () => console.log(`serving at http://localhost:${PORT}`));
+  if (!process.env.HOST) http.createServer(onRequest).listen(PORT, '::1').on('error', () => {});
+}
