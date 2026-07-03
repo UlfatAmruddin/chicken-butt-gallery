@@ -1,8 +1,19 @@
 'use strict';
 /* Vercel serverless entry. A catch-all so every /api/* request reaches the one
-   Node handler exported by server.js. The handler reads the original req.url,
-   so all existing routes work unchanged; server.js does not call listen() when
-   imported (require.main !== module), so no port is bound here. Static files
-   (index.html, main.js, styles.css, js/**, assets/fonts/**) are served by
-   Vercel's CDN, not this function. */
-module.exports = require('../server.js').onRequest;
+   Node handler exported by server.js. Requiring INSIDE the handler and wrapping
+   everything in try/catch means even a module-load failure surfaces as a
+   readable 500 (and is logged) instead of an opaque FUNCTION_INVOCATION_FAILED.
+   server.js does not call listen() when imported (require.main !== module). */
+module.exports = async (req, res) => {
+  try {
+    const onRequest = require('../server.js').onRequest;
+    await onRequest(req, res);
+  } catch (err) {
+    console.error('[fn] crash:', (err && err.stack) || err);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end('Server error: ' + ((err && err.message) || 'unknown'));
+    }
+  }
+};

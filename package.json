@@ -4,7 +4,7 @@
   "private": true,
   "description": "Chicken Butt Gallery: a zero-dependency Node.js photo gallery with a Three.js sphere and Places atlas.",
   "engines": {
-    "node": ">=18"
+    "node": "22.x"
   },
   "scripts": {
     "start": "node server.js",
