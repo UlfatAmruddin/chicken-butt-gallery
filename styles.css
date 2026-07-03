@@ -1197,6 +1197,9 @@ textarea { resize: vertical; }
 #profile-edit label { display: block; color: #9a9a9a; margin-bottom: 14px; }
 .pe-row { display: flex; gap: 14px; align-items: center; }
 .pe-row label { flex: 1; }
+.pe-danger-row { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(224, 90, 90, 0.25); }
+#pe-delete-account { color: #e05a5a; }
+#pe-delete-account:hover { text-decoration: underline; text-underline-offset: 3px; }
 #pe-cancel { color: #9a9a9a; text-decoration: underline; text-underline-offset: 4px; }
 .photos-label { margin: 44px 0 16px; letter-spacing: .12em; }
 #profile-photos {

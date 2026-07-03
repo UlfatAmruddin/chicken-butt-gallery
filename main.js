@@ -3680,6 +3680,11 @@ async function renderAdminMembers() {
       b.textContent = 'REMOVE';
       b.addEventListener('click', () => removeMember(member.username));
       actions.appendChild(b);
+      const bn = document.createElement('button');
+      bn.className = 'mono danger';
+      bn.textContent = 'BAN';
+      bn.addEventListener('click', () => banMember(member.username));
+      actions.appendChild(bn);
     }
     wrap.appendChild(row);
   });
@@ -3694,12 +3699,21 @@ async function changeMemberRole(username, role) {
 }
 
 async function removeMember(username) {
-  if (!confirm(`Remove and ban @${username} from this community? Their existing posts stay visible.`)) return;
+  if (!confirm(`Remove @${username} from this community? They can be re-invited later. Their existing posts stay visible.`)) return;
   try {
-    await api.call('DELETE', `/api/communities/${encodeURIComponent(currentCommunity.id)}/members/${encodeURIComponent(username)}`, { reason: 'Removed by admin' });
+    await api.call('DELETE', `/api/communities/${encodeURIComponent(currentCommunity.id)}/members/${encodeURIComponent(username)}`, {});
     toast('MEMBER REMOVED');
     await renderAdminPanel();
   } catch (e) { toast(String(e.message || 'COULD NOT REMOVE').toUpperCase()); }
+}
+
+async function banMember(username) {
+  if (!confirm(`Ban @${username}? They will be removed AND blocked from rejoining until you unban them. Their existing posts stay visible.`)) return;
+  try {
+    await api.call('DELETE', `/api/communities/${encodeURIComponent(currentCommunity.id)}/members/${encodeURIComponent(username)}`, { ban: true, reason: 'Banned by admin' });
+    toast('MEMBER BANNED');
+    await renderAdminPanel();
+  } catch (e) { toast(String(e.message || 'COULD NOT BAN').toUpperCase()); }
 }
 
 async function renderAdminBans() {
@@ -3870,6 +3884,29 @@ async function logoutEverywhere() {
   updateLandingLogin();
   await showLanding(true);
 }
+
+document.getElementById('pe-delete-account').addEventListener('click', async () => {
+  if (!me) return;
+  const peErr = document.getElementById('pe-err');
+  peErr.textContent = '';
+  if (!confirm('Permanently delete your account? This removes your profile, any communities you OWN (and all their photos), and every photo you posted. This cannot be undone.')) return;
+  const password = prompt('Type your password to confirm account deletion:');
+  if (!password) return;
+  try {
+    await api.call('DELETE', '/api/account', { password });
+    api.setToken('');
+    me = null;
+    allCommunities = [];
+    pendingAuthAction = null;
+    updateMeChip();
+    loadNotifications();
+    updateLandingLogin();
+    toast('ACCOUNT DELETED');
+    await showLanding(true);
+  } catch (e) {
+    peErr.textContent = String(e.message || 'COULD NOT DELETE ACCOUNT').toUpperCase();
+  }
+});
 
 document.getElementById('landing-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login'); });
 document.getElementById('hero-create').addEventListener('click', openCommunityModal);

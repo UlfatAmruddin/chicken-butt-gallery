@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON, init: storeInit, flush: storeFlush } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
 const {
-  migrateCommunities,
+  migrateCommunities, deleteUserAccount,
   send, readBody, authUser, createSession, tooManyAuthAttempts, tooManyWrites, hashPass,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
@@ -111,6 +111,25 @@ async function handleApi(req, res, pathname, params) {
       }
       saveJSON('users.json', users);
       return send(res, 200, publicProfile(u));
+    }
+
+    if (req.method === 'DELETE' && pathname === '/api/account') {
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const u = auth.user;
+      // the reserved admin account can't be self-deleted (avoids nuking the whole
+      // site + every community it owns by accident)
+      if (isAdminUsername(u.username)) return send(res, 403, { error: 'The admin account cannot be deleted.' });
+      // require the current password to confirm (timing-safe), same check as login
+      const raw = String(await readBody(req, 8 * 1024).catch(() => Buffer.from('')));
+      const b = raw ? JSON.parse(raw) : {};
+      const tryHash = Buffer.from(hashPass(String(b.password || ''), u.salt), 'hex');
+      const goodHash = Buffer.from(u.hash, 'hex');
+      if (tryHash.length !== goodHash.length || !crypto.timingSafeEqual(tryHash, goodHash)) {
+        return send(res, 403, { error: 'Wrong password.' });
+      }
+      await deleteUserAccount(u.username);   // cascade; marks all touched collections dirty
+      return send(res, 200, { ok: true });
     }
 
     /* ---------------- notifications inbox (per user) ---------------- */
@@ -268,14 +287,20 @@ async function handleApi(req, res, pathname, params) {
       const b = raw ? JSON.parse(raw) : {};
       const role = members[target];
       delete members[target];
-      communityBans(c)[target] = {
-        bannedBy: auth.user.username,
-        bannedAt: Date.now(),
-        reason: clean(b.reason, 160),
-      };
+      // Remove != ban. A plain removal lets the person be re-invited later; only
+      // ban (block rejoin) when the admin explicitly asks for it. Banning-on-every-
+      // removal previously made removed members permanently un-re-invitable.
+      const ban = b.ban === true || b.ban === 'true';
+      if (ban) {
+        communityBans(c)[target] = {
+          bannedBy: auth.user.username,
+          bannedAt: Date.now(),
+          reason: clean(b.reason, 160),
+        };
+      }
       saveJSON('communities.json', communities);
-      addAudit(c.id, auth.user.username, 'member.removed', target, { role, banned: true });
-      return send(res, 200, { ok: true });
+      addAudit(c.id, auth.user.username, ban ? 'member.banned' : 'member.removed', target, { role, banned: ban });
+      return send(res, 200, { ok: true, banned: ban });
     }
 
     if (req.method === 'GET' && seg[1] === 'communities' && seg[2] && seg[3] === 'bans') {
