@@ -26,6 +26,11 @@ const REACTION_EMOJI = ['heart', 'laugh', 'wow', 'sad', 'fire'];
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;   // leaked invite links stop working after 14 days
 const MAX_COMMUNITIES_PER_USER = 50;
 const MAX_ACTIVE_INVITES_PER_COMMUNITY = 20;
+// fixed salt used only to spend one scrypt on the login "user not found" branch,
+// so response time doesn't reveal whether a username exists (constant-time check).
+const DUMMY_LOGIN_SALT = 'cbg-login-timing-equalizer';
+// usernames blocked at registration (prototype-magic names + a few impersonation-y ones).
+const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype', 'hasownproperty', 'admin', 'root', 'system', 'everyone', 'null', 'undefined']);
 
 /* ---------------- API ---------------- */
 async function handleApi(req, res, pathname, params) {
@@ -43,6 +48,7 @@ async function handleApi(req, res, pathname, params) {
       const password = String(b.password || '');
       if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(res, 400, { error: 'Username must be 3-20 chars: letters, numbers, underscores.' });
+      if (RESERVED_NAMES.has(username)) return send(res, 409, { error: 'That username is taken.' });
       if (password.length < 8) return send(res, 400, { error: 'Password must be at least 8 characters.' });
       // reserve the configured admin name(s) so they can't be claimed on a fresh instance
       if (isAdminUsername(username)) return send(res, 409, { error: 'That username is taken.' });
@@ -66,7 +72,12 @@ async function handleApi(req, res, pathname, params) {
       const username = clean(b.username, 20).toLowerCase();
       if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       const u = users[username];
-      if (!u) return send(res, 401, { error: 'Wrong username or password.' });
+      if (!u) {
+        // equal-work path: spend one scrypt so login time doesn't reveal whether the
+        // username exists (constant-time account-existence check)
+        hashPass(String(b.password || ''), DUMMY_LOGIN_SALT);
+        return send(res, 401, { error: 'Wrong username or password.' });
+      }
       const tryHash = Buffer.from(hashPass(String(b.password || ''), u.salt), 'hex');
       const goodHash = Buffer.from(u.hash, 'hex');
       if (tryHash.length !== goodHash.length || !crypto.timingSafeEqual(tryHash, goodHash)) {

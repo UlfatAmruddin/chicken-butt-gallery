@@ -15,7 +15,7 @@ module.exports = async (req, res) => {
     if (!res.headersSent) {
       res.statusCode = 500;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.end('Server error: ' + ((err && err.message) || 'unknown'));
+      res.end('server error');   // never reflect err.message to the client
     }
   }
 };
