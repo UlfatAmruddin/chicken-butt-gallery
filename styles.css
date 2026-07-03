@@ -2200,3 +2200,230 @@ html, body {
   }
   #hud-more-sheet #hud-more-close { text-align: center; color: #9a9a9a; border-color: transparent; background: transparent; }
 }
+
+/* ============================================================
+   LANDING / HERO  —  "memory observatory"  (desktop-first, original)
+   A precision-instrument framing of the live photo-sphere: hairline frame +
+   registration ticks, a live telemetry readout wired to the real sphere
+   rotation, an editorial headline, sharp fill-wipe CTAs, film grain, and a
+   line-by-line reveal. Scoped to #landing so the hub/invite screens are
+   untouched. Desktop layout first; a compact mobile fallback follows.
+   ============================================================ */
+#landing.lp {
+  background:
+    radial-gradient(135% 100% at 74% 34%, rgba(26,24,22,0.20), rgba(0,0,0,0.60) 60%, rgba(0,0,0,0.94)),
+    #050505;
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+}
+/* darken the left so the copy stays legible over the sphere, let it breathe right */
+#landing.lp::before {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(101deg, rgba(0,0,0,0.86) 22%, rgba(0,0,0,0.30) 60%, rgba(0,0,0,0.58));
+}
+.lp-top, .lp-rule, .lp-meta, .lp-side, .lp-hero { z-index: 5; }
+
+/* --- film grain (subtle, animated flicker) --- */
+.lp-grain {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0.055;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 130px 130px;
+  animation: lpGrain 0.9s steps(3) infinite;
+}
+@keyframes lpGrain { 0%{transform:translate(0,0)} 33%{transform:translate(-4px,3px)} 66%{transform:translate(3px,-2px)} 100%{transform:translate(0,0)} }
+
+/* --- hairline frame + corner registration ticks --- */
+.lp-frame { position: absolute; inset: 22px; z-index: 4; pointer-events: none; border: 1px solid rgba(255,255,255,0.10); opacity: 0; animation: lpFade 1s ease 0.15s forwards; }
+.lp-tick { position: absolute; width: 13px; height: 13px; }
+.lp-tick::before, .lp-tick::after { content: ''; position: absolute; background: rgba(255,255,255,0.55); }
+.lp-tick::before { width: 13px; height: 1px; } .lp-tick::after { width: 1px; height: 13px; }
+.lp-tick.tl { top: -1px; left: -1px; } .lp-tick.tl::before,.lp-tick.tl::after { top: 0; left: 0; }
+.lp-tick.tr { top: -1px; right: -1px; } .lp-tick.tr::before { top:0; right:0; } .lp-tick.tr::after { top:0; right:0; }
+.lp-tick.bl { bottom: -1px; left: -1px; } .lp-tick.bl::before { bottom:0; left:0; } .lp-tick.bl::after { bottom:0; left:0; }
+.lp-tick.br { bottom: -1px; right: -1px; } .lp-tick.br::before { bottom:0; right:0; } .lp-tick.br::after { bottom:0; right:0; }
+
+/* --- top bar --- */
+.lp-top { position: absolute; top: 44px; left: 48px; right: 48px; display: flex; align-items: center; justify-content: space-between; opacity: 0; animation: lpFade 0.9s ease 0.25s forwards; }
+.lp-brand { display: flex; align-items: center; gap: 13px; }
+.lp-logo { width: 26px; height: 26px; display: block; flex: none; filter: drop-shadow(0 0 9px rgba(255,255,255,0.14)); }
+.lp-word { font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; color: #eaeaea; }
+.lp-login { display: inline-flex; align-items: center; gap: 9px; font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #cbcbcb; min-height: 44px; }
+.lp-login .lp-arrow, .lp-ghost .lp-arrow { transition: transform 0.3s ease; }
+.lp-login:hover { color: #fff; } .lp-login:hover .lp-arrow { transform: translateX(4px); }
+
+/* --- meta rule + live telemetry --- */
+.lp-rule { position: absolute; top: 88px; left: 48px; right: 48px; height: 1px; background: rgba(255,255,255,0.11); transform: scaleX(0); transform-origin: left; animation: lpDrawX 0.9s cubic-bezier(.5,.15,.1,1) 0.35s forwards; }
+.lp-meta { position: absolute; top: 99px; left: 48px; right: 48px; display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: #6a6a6a; opacity: 0; animation: lpFade 0.9s ease 0.55s forwards; }
+.lp-meta-r { display: inline-flex; align-items: center; gap: 9px; }
+.lp-live { width: 6px; height: 6px; border-radius: 50%; background: #e2e2e2; box-shadow: 0 0 8px rgba(255,255,255,0.6); animation: lpPulse 2.4s ease-in-out infinite; }
+#lp-readout { color: #9c9c9c; font-variant-numeric: tabular-nums; }
+
+/* --- vertical edge label --- */
+.lp-side { position: absolute; right: 46px; bottom: 48px; writing-mode: vertical-rl; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: #575757; opacity: 0; animation: lpFade 1s ease 0.7s forwards; }
+
+/* --- hero (anchored lower-left) --- */
+.lp-hero { position: absolute; left: 66px; bottom: 12vh; max-width: min(92vw, 1100px); }
+.lp-eyebrow { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #8f8f8f; margin-bottom: 30px; opacity: 0; animation: lpRise 0.8s cubic-bezier(.2,.7,.1,1) 0.45s forwards; }
+.lp-eyebrow .lp-num { color: #fff; }
+/* size capped by BOTH width and height so it never outgrows the viewport, and each
+   hand-broken line stays a single line (no re-wrapping into a giant block) */
+.lp-title { font-size: clamp(34px, min(4.8vw, 8.6vh), 86px); font-weight: 600; letter-spacing: -0.038em; line-height: 0.99; color: #fff; }
+.lp-ln { display: block; overflow: hidden; padding-bottom: 0.03em; }
+.lp-ln > span { display: block; white-space: nowrap; transform: translateY(112%); animation: lpUp 1s cubic-bezier(.16,.84,.3,1) forwards; }
+.lp-ln:nth-child(1) > span { animation-delay: 0.5s; }
+.lp-ln:nth-child(2) > span { animation-delay: 0.6s; }
+.lp-ln:nth-child(3) > span { animation-delay: 0.7s; }
+.lp-title em { font-style: italic; font-weight: 500; color: #cfcabf; letter-spacing: -0.02em; }
+.lp-sub { margin-top: 30px; max-width: 470px; font-size: 18px; line-height: 1.58; color: #a4a4a4; font-weight: 400; opacity: 0; animation: lpRise 0.9s cubic-bezier(.2,.7,.1,1) 0.9s forwards; }
+.lp-actions { margin-top: 42px; display: flex; align-items: center; gap: 24px; opacity: 0; animation: lpRise 0.9s cubic-bezier(.2,.7,.1,1) 1.02s forwards; }
+
+/* primary: sharp rectangle, white fill wipes in + text inverts */
+.lp-cta { position: relative; overflow: hidden; isolation: isolate; display: inline-flex; align-items: center; gap: 14px; padding: 17px 28px; border: 1px solid rgba(255,255,255,0.82); color: #fff; font-size: 15px; font-weight: 500; }
+.lp-cta-fill { position: absolute; inset: 0; z-index: -1; background: #fff; transform: translateX(-101%); transition: transform 0.44s cubic-bezier(.5,.15,.1,1); }
+.lp-cta:hover .lp-cta-fill { transform: translateX(0); }
+.lp-cta-label, .lp-cta-arrow { transition: color 0.32s ease, transform 0.32s ease; }
+.lp-cta:hover .lp-cta-label, .lp-cta:hover .lp-cta-arrow { color: #000; }
+.lp-cta:hover .lp-cta-arrow { transform: translateX(5px); }
+
+/* secondary: underline draws in on hover */
+.lp-ghost { position: relative; display: inline-flex; align-items: center; gap: 9px; padding: 8px 2px; color: #c6c6c6; font-size: 15px; font-weight: 500; }
+.lp-ghost::after { content: ''; position: absolute; left: 0; bottom: 2px; width: 100%; height: 1px; background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform 0.34s cubic-bezier(.5,.15,.1,1); }
+.lp-ghost:hover { color: #fff; } .lp-ghost:hover::after { transform: scaleX(1); } .lp-ghost:hover .lp-arrow { transform: translateX(4px); }
+
+@keyframes lpUp { to { transform: translateY(0); } }
+@keyframes lpFade { to { opacity: 1; } }
+@keyframes lpRise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes lpDrawX { to { transform: scaleX(1); } }
+@keyframes lpPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-grain { animation: none; }
+  .lp-frame, .lp-top, .lp-rule, .lp-meta, .lp-side, .lp-eyebrow, .lp-sub, .lp-actions { animation: none; opacity: 1; }
+  .lp-rule { transform: scaleX(1); }
+  .lp-ln > span { animation: none; transform: none; }
+}
+
+/* --- mobile fallback (compact, stacked; desktop rework is the focus for now) --- */
+@media (max-width: 760px) {
+  #landing.lp { overflow-y: auto; }
+  .lp-frame { inset: 14px; }
+  .lp-top { top: 30px; left: 30px; right: 30px; }
+  .lp-word { font-size: 10px; letter-spacing: 0.18em; }
+  .lp-rule, .lp-meta { left: 30px; right: 30px; }
+  .lp-rule { top: 72px; } .lp-meta { top: 82px; font-size: 9px; }
+  .lp-side { display: none; }
+  .lp-hero { left: 24px; right: 24px; bottom: 8vh; max-width: none; }
+  .lp-eyebrow { margin-bottom: 20px; font-size: 10px; }
+  .lp-title { font-size: clamp(38px, 12.5vw, 60px); }
+  .lp-sub { font-size: 16px; margin-top: 22px; }
+  .lp-actions { margin-top: 30px; flex-direction: column; align-items: stretch; gap: 12px; }
+  .lp-cta { justify-content: center; }
+  .lp-ghost { justify-content: center; }
+}
+
+/* ============================================================
+   OBSERVATORY THEME  —  pre-community views only
+   Applies the landing's instrument/editorial language (grain, hairline frame,
+   sharp fill-wipe buttons, underline inputs, hairline cards/modals) to every
+   screen BEFORE entering a community: #community-hub, #invite-view, #auth, and
+   the create-community / enter-invite modals. Everything INSIDE a community
+   keeps its soft pill UI, so all rules are scoped to these containers and never
+   touch the shared classes globally.
+   ============================================================ */
+
+/* --- screens: deep field + film grain + hairline frame --- */
+#community-hub, #invite-view, #auth {
+  background:
+    radial-gradient(130% 100% at 50% 32%, rgba(24,22,20,0.15), rgba(0,0,0,0.68) 60%, rgba(0,0,0,0.96)),
+    #050505;
+  color: #fff;
+}
+#community-hub::before, #invite-view::before, #auth::before {
+  content: ''; position: absolute; inset: 22px; z-index: 0; pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.09);
+}
+#community-hub::after, #invite-view::after, #auth::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0.05; mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='obsn'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23obsn)'/%3E%3C/svg%3E");
+  background-size: 130px 130px;
+}
+/* lift the real content above the frame + grain (only specific wrappers, so we
+   never clobber .entry-top's fixed positioning) */
+#community-hub .hub-inner, #invite-view .invite-card, #auth .auth-box { position: relative; z-index: 2; }
+#community-hub .entry-top, #invite-view .entry-top { z-index: 3; }
+
+/* --- top bars: precise mono links (match the landing's LOG IN) --- */
+#community-hub .entry-top button, #invite-view .entry-top button {
+  font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+  text-decoration: none; color: #cbcbcb;
+}
+#community-hub .entry-top button:hover, #invite-view .entry-top button:hover { color: #fff; }
+
+/* --- eyebrows + headings + sub --- */
+#community-hub .hero-kicker, #invite-view .hero-kicker { color: #8f8f8f; letter-spacing: 0.16em; }
+#community-hub .hub-inner h1, #invite-view .invite-card h1 { letter-spacing: -0.035em; line-height: 0.98; }
+#community-hub .hero-sub, #invite-view .hero-sub { color: #a4a4a4; }
+
+/* --- primary button (.pill-white) -> sharp rectangle, white fill wipes in --- */
+#community-hub .pill-white, #invite-view .pill-white, #auth .pill-white,
+#community-modal .pill-white, #enter-invite-modal .pill-white {
+  position: relative; overflow: hidden; isolation: isolate;
+  border-radius: 0; background: transparent; border: 1px solid rgba(255,255,255,0.82);
+  color: #fff; font-weight: 500; letter-spacing: 0.01em; transition: color 0.32s ease;
+}
+#community-hub .pill-white::before, #invite-view .pill-white::before, #auth .pill-white::before,
+#community-modal .pill-white::before, #enter-invite-modal .pill-white::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: #fff;
+  transform: translateX(-101%); transition: transform 0.44s cubic-bezier(.5,.15,.1,1);
+}
+#community-hub .pill-white:hover, #invite-view .pill-white:hover, #auth .pill-white:hover,
+#community-modal .pill-white:hover, #enter-invite-modal .pill-white:hover { color: #000; transform: none; }
+#community-hub .pill-white:hover::before, #invite-view .pill-white:hover::before, #auth .pill-white:hover::before,
+#community-modal .pill-white:hover::before, #enter-invite-modal .pill-white:hover::before { transform: translateX(0); }
+
+/* --- secondary button (.ghost-pill) -> sharp hairline rectangle --- */
+#community-hub .ghost-pill, #invite-view .ghost-pill {
+  border-radius: 0; border: 1px solid rgba(255,255,255,0.26); transition: border-color 0.25s, color 0.25s;
+}
+#community-hub .ghost-pill:hover, #invite-view .ghost-pill:hover { border-color: #fff; transform: none; }
+
+/* --- inputs / textareas -> clean underline fields --- */
+#auth #auth-form input, #community-modal input, #community-modal textarea, #enter-invite-modal input {
+  border-radius: 0; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.22);
+  padding-left: 0; padding-right: 0; transition: border-color 0.25s;
+}
+#auth #auth-form input:focus, #community-modal input:focus, #community-modal textarea:focus, #enter-invite-modal input:focus {
+  outline: none; border-bottom-color: #fff;
+}
+#auth #auth-form label, #community-modal label, #enter-invite-modal label {
+  font-family: 'Space Mono', monospace; letter-spacing: 0.08em;
+}
+
+/* --- community cards -> sharp hairline rows --- */
+#community-hub .community-card {
+  border-radius: 0; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02);
+  transition: border-color 0.25s, background 0.25s, transform 0.25s;
+}
+#community-hub .community-card:hover {
+  border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.045); transform: none;
+}
+
+/* --- create-community / enter-invite modals -> sharp box + hairline --- */
+#community-modal .modal-box, #enter-invite-modal .modal-box {
+  border-radius: 0; border: 1px solid rgba(255,255,255,0.14); background: #0a0a0a;
+}
+#community-modal .modal-head, #enter-invite-modal .modal-head { letter-spacing: 0.14em; }
+
+/* --- auth screen specifics --- */
+#auth .auth-box {
+  border-radius: 0; border: 1px solid rgba(255,255,255,0.12); background: rgba(10,10,10,0.72);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+#auth .auth-tabs button {
+  border-radius: 0; position: relative; letter-spacing: 0.12em;
+}
+#auth .auth-tabs button.active { color: #fff; }
+#auth .auth-title { letter-spacing: 0.14em; }

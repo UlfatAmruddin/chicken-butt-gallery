@@ -5274,3 +5274,20 @@ function toggleSettings() {
 settingsBtn.addEventListener('click', toggleSettings);
 
 init();
+
+/* Landing telemetry: a live readout wired to the ACTUAL photo-sphere rotation plus
+   a UTC clock, so the "observatory" framing reads as a real instrument. Cheap and
+   only paints while the landing is on screen. */
+(function landingReadout() {
+  const el = document.getElementById('lp-readout');
+  const landing = document.getElementById('landing');
+  if (!el || !landing) return;
+  const pad = (n) => String(n).padStart(2, '0');
+  setInterval(() => {
+    if (landing.hidden || getComputedStyle(landing).display === 'none') return;
+    const az = ((((state.tx || 0) * 8) % 360) + 360) % 360;
+    const now = new Date();
+    el.textContent = 'AZ ' + az.toFixed(1).padStart(5, '0') + '° · '
+      + pad(now.getUTCHours()) + ':' + pad(now.getUTCMinutes()) + ':' + pad(now.getUTCSeconds()) + 'Z';
+  }, 200);
+})();

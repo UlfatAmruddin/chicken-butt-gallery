@@ -13,18 +13,59 @@
 <div class="vignette"></div>
 
 <!-- ======= PUBLIC WELCOME ======= -->
-<section id="landing" class="entry-screen">
-  <div class="entry-top mono">
-    <span>CHICKEN BUTT GALLERY</span>
-    <button id="landing-login" type="button">LOG IN</button>
+<section id="landing" class="entry-screen lp">
+  <div class="lp-grain" aria-hidden="true"></div>
+  <div class="lp-frame" aria-hidden="true">
+    <i class="lp-tick tl"></i><i class="lp-tick tr"></i><i class="lp-tick bl"></i><i class="lp-tick br"></i>
   </div>
-  <div class="hero-copy">
-    <p class="mono hero-kicker">PRIVATE MEMORY SPHERES</p>
-    <h1>Make a room for the photos only your friends should see.</h1>
-    <p class="hero-sub">Create an invite-only gallery, send the link, and let everyone build the sphere together.</p>
-    <div class="hero-actions">
-      <button id="hero-create" class="pill-white" type="button">Create A Community</button>
-      <button id="hero-invite" class="ghost-pill" type="button">Enter Invite</button>
+
+  <header class="lp-top">
+    <div class="lp-brand">
+      <svg class="lp-logo" width="26" height="26" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g fill="#fff">
+          <path d="M17 31 C7 27 3 19 5 10 C9 16 13 18 16 19 C12 13 12 7 16 3 C19 9 22 13 26 15 Z"/>
+          <path d="M14 36 C14 25 23 18 33 18 L44 18 C49 18 53 22 53 27 C53 40 43 51 31 51 C21 51 14 45 14 36 Z"/>
+          <path d="M37 11 L53 20 L40 29 Z"/>
+          <circle cx="46" cy="14" r="8"/>
+          <path d="M40 8 C38 3 42 0 44 3 C45 -1 49 -1 49 3 C52 1 54 4 52 8 Z"/>
+          <path d="M54 11 L62 14.5 L54 18 Z"/>
+          <path d="M50 20 C53 24 51 28 49 28 C47 28 46 23 48 20 Z"/>
+          <path d="M27 51 v8 M27 59 l-4 4 M27 59 l3 4 M37 50 v8 M37 58 l-4 4 M37 58 l3 4" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        </g>
+        <circle cx="48.5" cy="12.5" r="1.7" fill="#0a0a0a"/>
+      </svg>
+      <span class="lp-word">Chicken&nbsp;Butt&nbsp;Gallery</span>
+    </div>
+    <button id="landing-login" type="button" class="lp-login">
+      <span>Log&nbsp;in</span><span class="lp-arrow" aria-hidden="true">&rarr;</span>
+    </button>
+  </header>
+
+  <div class="lp-rule" aria-hidden="true"></div>
+  <div class="lp-meta">
+    <span>Private&nbsp;memory&nbsp;spheres</span>
+    <span class="lp-meta-r"><span class="lp-live" aria-hidden="true"></span><span id="lp-readout">initialising&hellip;</span></span>
+  </div>
+
+  <span class="lp-side" aria-hidden="true">Invite-only &middot; Est. 2026</span>
+
+  <div class="lp-hero">
+    <p class="lp-eyebrow"><span class="lp-num">01</span> &mdash; a private place for the people who were there</p>
+    <h1 class="lp-title">
+      <span class="lp-ln"><span>Make a room for the</span></span>
+      <span class="lp-ln"><span>photos only your</span></span>
+      <span class="lp-ln"><span><em>friends</em> should see.</span></span>
+    </h1>
+    <p class="lp-sub">Spin up an invite-only gallery, share one link, and watch everyone build the memory sphere together.</p>
+    <div class="lp-actions">
+      <button id="hero-create" type="button" class="lp-cta">
+        <span class="lp-cta-fill" aria-hidden="true"></span>
+        <span class="lp-cta-label">Create a community</span>
+        <span class="lp-cta-arrow" aria-hidden="true">&rarr;</span>
+      </button>
+      <button id="hero-invite" type="button" class="lp-ghost">
+        <span>Enter an invite</span><span class="lp-arrow" aria-hidden="true">&rarr;</span>
+      </button>
     </div>
   </div>
 </section>
