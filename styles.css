@@ -1026,6 +1026,9 @@ textarea { resize: vertical; }
 }
 .modal-box {
   width: 420px; max-width: 90vw;
+  /* never taller than the screen: scroll inside when content overflows (mobile) */
+  max-height: 90vh; max-height: 90dvh;
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 18px;
   padding: 22px;
 }
