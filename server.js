@@ -47,14 +47,6 @@ async function handleApi(req, res, pathname, params) {
       const username = clean(b.username, 20).toLowerCase();
       const password = String(b.password || '');
       if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
-      // Registration is invite-only: a valid, usable community invite is required to
-      // create an account. Checking it FIRST - before any username lookup - means a
-      // caller without a valid invite can never reach the username-existence branch
-      // below, so /api/register is no longer an open account-enumeration oracle.
-      const inviteCode = clean(b.invite, 64);
-      const invite = invites.find(i => i.code === inviteCode);
-      const community = invite && findCommunity(invite.communityId);
-      if (!inviteUsable(invite) || !community) return send(res, 403, { error: 'A valid invite is required to sign up.' });
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(res, 400, { error: 'Username must be 3-20 chars: letters, numbers, underscores.' });
       if (RESERVED_NAMES.has(username)) return send(res, 409, { error: 'That username is taken.' });
       if (password.length < 8) return send(res, 400, { error: 'Password must be at least 8 characters.' });
@@ -71,16 +63,8 @@ async function handleApi(req, res, pathname, params) {
         joined: Date.now(),
       };
       saveJSON('users.json', users);
-      // the invite both authorizes the account and joins its community in one step,
-      // consuming a use (mirrors POST /api/invites/:code/join for an existing user).
-      communityMembers(community)[username] = 'member';
-      invite.uses = (invite.uses || 0) + 1;
-      if (invite.maxUses && invite.uses >= invite.maxUses) invite.revoked = true;
-      saveJSON('communities.json', communities);
-      saveJSON('invites.json', invites);
-      addAudit(community.id, username, 'member.joined', username);
       const token = createSession(username);
-      return send(res, 200, { token, profile: publicProfile(users[username]), community: publicCommunity(community, username) });
+      return send(res, 200, { token, profile: publicProfile(users[username]) });
     }
 
     if (req.method === 'POST' && pathname === '/api/login') {
