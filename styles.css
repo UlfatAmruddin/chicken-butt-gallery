@@ -2427,3 +2427,6 @@ html, body {
 }
 #auth .auth-tabs button.active { color: #fff; }
 #auth .auth-title { letter-spacing: 0.14em; }
+/* keep the HOME button clear of the hairline frame (inset 22px) instead of jammed against it */
+#auth .entry-top { top: 42px; left: 44px; right: 44px; }
+@media (max-width: 760px) { #auth .entry-top { top: 34px; left: 32px; right: 32px; } }
