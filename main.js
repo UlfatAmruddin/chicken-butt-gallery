@@ -3979,6 +3979,7 @@ document.getElementById('hub-logout').addEventListener('click', logoutEverywhere
 // returns to the hero/welcome page (same as the HOME buttons).
 document.querySelector('.logo').addEventListener('click', (e) => { e.preventDefault(); showLanding(true); });
 document.getElementById('invite-home').addEventListener('click', () => showLanding(true));
+document.getElementById('auth-home').addEventListener('click', () => showLanding(true));
 document.getElementById('invite-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login', pendingInviteCode ? { type: 'invite', code: pendingInviteCode } : null); });
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
 communityChip.addEventListener('click', openCommunityRoom);

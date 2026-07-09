@@ -878,7 +878,7 @@ textarea { resize: vertical; }
 #auth {
   position: fixed; inset: 0; z-index: 130;
   background: #000;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; overflow-y: auto; padding: 40px 16px;
 }
 .auth-box { width: 360px; max-width: 88vw; text-align: center; }
 .auth-title {
@@ -2348,14 +2348,14 @@ html, body {
 /* lift the real content above the frame + grain (only specific wrappers, so we
    never clobber .entry-top's fixed positioning) */
 #community-hub .hub-inner, #invite-view .invite-card, #auth .auth-box { position: relative; z-index: 2; }
-#community-hub .entry-top, #invite-view .entry-top { z-index: 3; }
+#community-hub .entry-top, #invite-view .entry-top, #auth .entry-top { z-index: 3; }
 
 /* --- top bars: precise mono links (match the landing's LOG IN) --- */
-#community-hub .entry-top button, #invite-view .entry-top button {
+#community-hub .entry-top button, #invite-view .entry-top button, #auth .entry-top button {
   font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
   text-decoration: none; color: #cbcbcb;
 }
-#community-hub .entry-top button:hover, #invite-view .entry-top button:hover { color: #fff; }
+#community-hub .entry-top button:hover, #invite-view .entry-top button:hover, #auth .entry-top button:hover { color: #fff; }
 
 /* --- eyebrows + headings + sub --- */
 #community-hub .hero-kicker, #invite-view .hero-kicker { color: #8f8f8f; letter-spacing: 0.16em; }
@@ -2419,6 +2419,8 @@ html, body {
 #auth .auth-box {
   border-radius: 0; border: 1px solid rgba(255,255,255,0.12); background: rgba(10,10,10,0.72);
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  padding: 44px 38px 40px;   /* content was flush against the card border - inset it */
+  margin: auto;   /* center, but stay scrollable on short screens (flex auto-margin trick) */
 }
 #auth .auth-tabs button {
   border-radius: 0; position: relative; letter-spacing: 0.12em;
