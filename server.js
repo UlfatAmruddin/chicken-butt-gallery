@@ -5,7 +5,7 @@ const { users, sessions, posts, albums, communities, invites, auditEvents, notif
 const { securityHeaders, serveStatic } = require('./lib/static');
 const {
   migrateCommunities, deleteUserAccount,
-  send, readBody, authUser, createSession, tooManyAuthAttempts, tooManyWrites, hashPass,
+  send, readBody, authUser, createSession, hashToken, tooManyAuthAttempts, tooManyWrites, tooManyGeocodes, hashPass,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
@@ -89,7 +89,7 @@ async function handleApi(req, res, pathname, params) {
 
     if (req.method === 'POST' && pathname === '/api/logout') {
       const auth = authUser(req);
-      if (auth) { delete sessions[auth.token]; saveJSON('sessions.json', sessions); }
+      if (auth) { delete sessions[hashToken(auth.token)]; saveJSON('sessions.json', sessions); }
       return send(res, 200, { ok: true });
     }
 
@@ -245,10 +245,12 @@ async function handleApi(req, res, pathname, params) {
         c.activePromptId = prompts.some(p => p.id === b.activePromptId) ? b.activePromptId : '';
       }
       if (b.cover === '') {
+        if (c.cover) await deleteImage(c.cover);   // don't orphan the old cover on clear
         c.cover = '';
       } else if (b.cover) {
         const saved = await saveImage(b.cover, 'community', `${c.id}-cover`, 8 * 1024 * 1024);
         if (saved.error) return send(res, 400, { error: saved.error });
+        if (c.cover && c.cover !== saved.file) await deleteImage(c.cover);   // and not on replace
         c.cover = saved.file;
       }
       saveJSON('communities.json', communities);
@@ -270,7 +272,7 @@ async function handleApi(req, res, pathname, params) {
       if (!auth) return;
       const c = findCommunity(seg[2]);
       if (!c) return send(res, 404, { error: 'No such community.' });
-      const target = clean(decodeURIComponent(seg[4]), 20).toLowerCase();
+      const target = clean(seg[4], 20).toLowerCase();   // seg is already decoded once in onRequest
       const members = communityMembers(c);
       const currentRole = members[target];
       if (!currentRole) return send(res, 404, { error: 'No such member.' });
@@ -290,7 +292,7 @@ async function handleApi(req, res, pathname, params) {
       if (!auth) return;
       const c = findCommunity(seg[2]);
       if (!c) return send(res, 404, { error: 'No such community.' });
-      const target = clean(decodeURIComponent(seg[4]), 20).toLowerCase();
+      const target = clean(seg[4], 20).toLowerCase();   // seg is already decoded once in onRequest
       const members = communityMembers(c);
       if (!members[target]) return send(res, 404, { error: 'No such member.' });
       if (!canRemoveMember(c, auth.user.username, target)) return send(res, 403, { error: 'You cannot remove that member.' });
@@ -335,7 +337,7 @@ async function handleApi(req, res, pathname, params) {
       const c = findCommunity(seg[2]);
       if (!c) return send(res, 404, { error: 'No such community.' });
       if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can unban members.' });
-      const target = clean(decodeURIComponent(seg[4]), 20).toLowerCase();
+      const target = clean(seg[4], 20).toLowerCase();   // seg is already decoded once in onRequest
       delete communityBans(c)[target];
       saveJSON('communities.json', communities);
       addAudit(c.id, auth.user.username, 'member.unbanned', target);
@@ -580,7 +582,7 @@ async function handleApi(req, res, pathname, params) {
     if (req.method === 'GET' && seg[1] === 'user' && seg[2]) {
       const ctx = requireCommunity(req, res, params);
       if (!ctx) return;
-      const u = users[decodeURIComponent(seg[2]).toLowerCase()];
+      const u = users[seg[2].toLowerCase()];   // seg is already decoded once in onRequest
       if (!u || !isCommunityMember(ctx.community, u.username)) return send(res, 404, { error: 'No such user in this community.' });
       return send(res, 200, {
         profile: publicProfile(u, ctx.community.id),
@@ -592,9 +594,10 @@ async function handleApi(req, res, pathname, params) {
     if (req.method === 'GET' && pathname === '/api/geocode') {
       const auth = requireAuth(req, res);
       if (!auth) return;
-      // this GET drives an outbound Nominatim request, so throttle it per IP too
-      // (the global write throttle only covers mutating methods).
-      if (tooManyWrites(req)) return send(res, 429, { error: 'Too many requests. Slow down.' });
+      // this GET drives an outbound Nominatim request, so throttle it with a
+      // dedicated, much stricter limiter (well under OSM's ~1 req/sec policy) rather
+      // than the generic 120/min write throttle.
+      if (tooManyGeocodes(req, auth.user.username)) return send(res, 429, { error: 'Too many place searches. Slow down.' });
       const results = await geocodePlace(params.get('q') || '');
       return send(res, 200, { results });
     }
@@ -835,7 +838,13 @@ async function handleApi(req, res, pathname, params) {
       if (b.client !== undefined) post.client = clean(b.client, 30);
       if (b.place !== undefined) post.place = clean(b.place, 80);
       if (b.lat !== undefined || b.lng !== undefined || b.country !== undefined || b.state !== undefined) {
-        Object.assign(post, sanitizeGeo(b));   // lat, lng, country, state
+        // only overwrite the geo fields actually present in the body, so a partial
+        // update (e.g. just country) can't null out the photo's existing lat/lng.
+        // lat/lng move as a pair since sanitizeGeo only keeps them when both are valid.
+        const geo = sanitizeGeo(b);
+        if (b.lat !== undefined || b.lng !== undefined) { post.lat = geo.lat; post.lng = geo.lng; }
+        if (b.country !== undefined) post.country = geo.country;
+        if (b.state !== undefined) post.state = geo.state;
       }
       if (b.caption !== undefined) post.caption = clean(b.caption, 300);
       if (b.year !== undefined) {
@@ -1081,7 +1090,14 @@ async function onRequest(req, res) {
 
   try {
     if (pathname.startsWith('/api/')) {
-      await handleApi(req, res, pathname, u.searchParams);
+      if (req.method === 'HEAD') {
+        // the API router only implements GET reads; a HEAD must not carry a body,
+        // so answer 405 with headers only rather than falling through to a JSON 404.
+        res.writeHead(405, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Allow': 'GET, POST, PUT, DELETE', 'Cache-Control': 'no-store' }));
+        res.end();
+      } else {
+        await handleApi(req, res, pathname, u.searchParams);
+      }
     } else {
       // serveStatic finishes inside an async fs.readFile callback and returns
       // nothing to await, so wait for the response itself to complete - otherwise

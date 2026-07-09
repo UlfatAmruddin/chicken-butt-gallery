@@ -4517,22 +4517,33 @@ async function renderPickAlbum() {
   let mine = [];
   try { mine = await api.call('GET', '/api/albums?user=' + encodeURIComponent(me.username)); } catch {}
   document.getElementById('pick-album-empty').hidden = mine.length > 0;
-  for (const a of mine) {
-    let inAlbum = false;
-    try { const d = await api.call('GET', '/api/albums/' + a.id); inAlbum = d.posts.some(p => p.id === pickAlbumPhotoId); } catch {}
+  // fetch membership for every album in PARALLEL (was a serial N+1 that also re-ran
+  // in full on each toggle); then update the toggled row in place instead.
+  const membership = await Promise.all(mine.map(a =>
+    api.call('GET', '/api/albums/' + a.id)
+      .then(d => d.posts.some(p => p.id === pickAlbumPhotoId))
+      .catch(() => false)
+  ));
+  mine.forEach((a, idx) => {
+    let inAlbum = membership[idx];
     const row = document.createElement('button');
-    row.className = 'pick-album-row' + (inAlbum ? ' in' : '');
-    row.innerHTML = `<span>${esc(a.name)}</span><span class="pa-count">${inAlbum ? 'ADDED ✓' : a.photoCount + ' PHOTOS'}</span>`;
+    const paint = () => {
+      row.className = 'pick-album-row' + (inAlbum ? ' in' : '');
+      row.innerHTML = `<span>${esc(a.name)}</span><span class="pa-count">${inAlbum ? 'ADDED ✓' : a.photoCount + ' PHOTOS'}</span>`;
+    };
+    paint();
     row.addEventListener('click', async () => {
       try {
         await api.call('PUT', '/api/albums/' + a.id, inAlbum ? { removePhotoId: pickAlbumPhotoId } : { addPhotoId: pickAlbumPhotoId });
-        toast(inAlbum ? 'REMOVED FROM ALBUM' : 'ADDED TO ALBUM');
-        renderPickAlbum();
+        inAlbum = !inAlbum;
+        a.photoCount = Math.max(0, (a.photoCount || 0) + (inAlbum ? 1 : -1));
+        paint();
+        toast(inAlbum ? 'ADDED TO ALBUM' : 'REMOVED FROM ALBUM');
         if (albumsOpen && viewingAlbum && viewingAlbum.album.id === a.id) showAlbum(a.id);
       } catch (e) { toast(String(e.message || '').toUpperCase()); }
     });
     listEl.appendChild(row);
-  }
+  });
 }
 document.getElementById('pick-album-close').addEventListener('click', closePickAlbum);
 pickAlbumModal.addEventListener('pointerdown', (e) => { if (e.target === pickAlbumModal) closePickAlbum(); });
@@ -5156,7 +5167,7 @@ document.getElementById('d-share').addEventListener('click', () => {
 document.getElementById('d-locate').addEventListener('click', () => {
   if (detailProject && detailProject.postId) focusCardOnSphere(detailProject.postId);
 });
-document.getElementById('d-download').addEventListener('click', () => {
+document.getElementById('d-download').addEventListener('click', async () => {
   const p = detailProject;
   if (!p) return;
   const url = p.heroSrc || p.src;
@@ -5164,13 +5175,29 @@ document.getElementById('d-download').addEventListener('click', () => {
   const extMatch = /\.(jpe?g|png|webp|gif)(?:[?#]|$)/i.exec(url);
   const ext = extMatch ? extMatch[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
   const name = sanitizeBase(p.title, 'photo');
+  // A cross-origin URL (the public Supabase bucket) makes browsers IGNORE the
+  // <a download> filename and just navigate to the image, and a.click() never
+  // throws so the old fallback never ran. Fetch such URLs into a Blob first and
+  // download the object URL, which always honors the filename. Same-origin / blob:
+  // / data: can use the anchor directly.
+  const sameOrigin = /^(blob:|data:)/i.test(url) ||
+    (() => { try { return new URL(url, location.href).origin === location.origin; } catch { return false; } })();
   try {
+    let href = url;
+    let objectUrl = null;
+    if (!sameOrigin) {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('fetch failed');
+      objectUrl = URL.createObjectURL(await resp.blob());
+      href = objectUrl;
+    }
     const a = document.createElement('a');
-    a.href = url;
+    a.href = href;
     a.download = name + '.' + ext;
     document.body.appendChild(a);
     a.click();
     a.remove();
+    if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
     toast('SAVING PHOTO');
   } catch {
     window.open(url, '_blank');

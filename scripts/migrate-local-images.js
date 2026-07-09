@@ -32,9 +32,13 @@ async function toSupabase(localPath, subdir) {
 (async () => {
   if (!supa.isConfigured()) { console.error('Supabase is not configured (.supabase.json or SUPABASE_* env). Aborting.'); process.exit(1); }
 
-  // back up the two data files we touch
+  // back up the two data files we touch - but only if a backup does NOT already
+  // exist, so re-running the migration (e.g. to catch stragglers that failed the
+  // first pass) can't overwrite the genuine pre-migration snapshot with already-
+  // migrated data.
   for (const f of ['posts.json', 'users.json']) {
-    fs.copyFileSync(path.join(DATA, f), path.join(DATA, `${f}.pre-image-migration.bak`));
+    const bak = path.join(DATA, `${f}.pre-image-migration.bak`);
+    if (!fs.existsSync(bak)) fs.copyFileSync(path.join(DATA, f), bak);
   }
   console.log('backed up posts.json + users.json (.pre-image-migration.bak)\n');
 
@@ -53,16 +57,20 @@ async function toSupabase(localPath, subdir) {
   for (const name of Object.keys(users)) {
     const u = users[name];
     if (isLocal(u.avatar)) { const url = await toSupabase(u.avatar, 'avatars'); if (url) { console.log(`avatar ${name}: ${u.avatar} -> supabase`); u.avatar = url; avatars++; } }
-    if (isLocal(u.coverFile)) { const url = await toSupabase(u.coverFile, 'community'); if (url) { console.log(`cover ${name}: ${u.coverFile} -> supabase`); u.coverFile = url; covers++; } }
+    if (isLocal(u.cover)) { const url = await toSupabase(u.cover, 'community'); if (url) { console.log(`cover ${name}: ${u.cover} -> supabase`); u.cover = url; covers++; } }
   }
   save('users.json', users);
 
   const communities = load('communities.json');
   let commCovers = 0;
   for (const c of communities) {
-    if (isLocal(c.coverFile)) { const url = await toSupabase(c.coverFile, 'community'); if (url) { console.log(`community ${c.id}: ${c.coverFile} -> supabase`); c.coverFile = url; commCovers++; } }
+    if (isLocal(c.cover)) { const url = await toSupabase(c.cover, 'community'); if (url) { console.log(`community ${c.id}: ${c.cover} -> supabase`); c.cover = url; commCovers++; } }
   }
-  if (commCovers) { fs.copyFileSync(path.join(DATA, 'communities.json'), path.join(DATA, 'communities.json.pre-image-migration.bak')); save('communities.json', communities); }
+  if (commCovers) {
+    const bak = path.join(DATA, 'communities.json.pre-image-migration.bak');
+    if (!fs.existsSync(bak)) fs.copyFileSync(path.join(DATA, 'communities.json'), bak);
+    save('communities.json', communities);
+  }
 
   console.log(`\ndone. photos: ${photos}, avatars: ${avatars}, user covers: ${covers}, community covers: ${commCovers}`);
 })().catch((e) => { console.error('migration error:', e.message); process.exit(1); });

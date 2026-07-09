@@ -104,6 +104,10 @@ export function initCinema({ getProject, step, isPlaying, togglePlay, isPlayable
       layer.hidden = true;
       layer.setAttribute('aria-hidden', 'true');
       gsap.set(layer, { clearProps: 'opacity' });
+      // release the decoded full-res bitmap + its blurred twin so a closed cinema
+      // doesn't pin the last photo in memory; update() re-sets both on next open.
+      img.removeAttribute('src');
+      backdrop.style.backgroundImage = 'none';
     };
     if (reduceMotion) { finish(); }
     else { gsap.to(layer, { opacity: 0, duration: 0.3, ease: 'power2.in', onComplete: finish }); }

@@ -578,7 +578,6 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
   scrollbar-width: thin; scrollbar-color: #3a3a3a transparent;
   -webkit-overflow-scrolling: touch;
 }
-.d-filmstrip[hidden] { display: none; }
 .d-filmstrip::-webkit-scrollbar { height: 6px; }
 .d-filmstrip::-webkit-scrollbar-track { background: transparent; }
 .d-filmstrip::-webkit-scrollbar-thumb { background: #2c2c2c; border-radius: 999px; }
@@ -1245,9 +1244,7 @@ textarea { resize: vertical; }
 .album-actions button { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
 .album-actions button:hover { color: #fff; }
 .album-actions button.danger:hover { color: #e05a5a; }
-#album-contact-sheet[hidden] { display: none; }
 #album-contact-sheet:disabled { opacity: .5; cursor: default; }
-#album-sheet-building[hidden] { display: none; }
 #album-sheet-building { animation: recapPulse 1.1s ease-in-out infinite; }
 #album-edit-form { max-width: 560px; margin-top: 22px; }
 #album-edit-form label { display: block; color: #9a9a9a; margin-bottom: 14px; }
@@ -1316,7 +1313,6 @@ textarea { resize: vertical; }
 /* "FIND ON SPHERE" - spin the sphere to this photo from the detail bar */
 .locate-btn { display: inline-flex; align-items: center; transition: color .2s, letter-spacing .2s; }
 .locate-btn:hover { color: #fff; letter-spacing: .04em; }
-.locate-btn[hidden] { display: none; }
 
 /* slideshow play/pause toggle + progress ring (detail action row) */
 .play-btn {
@@ -1660,7 +1656,6 @@ textarea { resize: vertical; }
 }
 .recap-actions .share-btn:hover { color: #fff; letter-spacing: .04em; }
 .recap-actions .share-btn:disabled { opacity: .5; cursor: default; letter-spacing: normal; }
-#recap-building[hidden] { display: none; }
 #recap-building {
   display: inline-flex; align-items: center;
   animation: recapPulse 1.1s ease-in-out infinite;
@@ -1840,7 +1835,7 @@ textarea { resize: vertical; }
 /* ---------- toast ---------- */
 #toast {
   position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
-  z-index: 95;
+  z-index: 200;   /* above z-140 modals + backdrop, so toasts fired from an open modal are visible */
   background: #fff; color: #000;
   padding: 12px 22px; border-radius: 999px;
   letter-spacing: .08em;

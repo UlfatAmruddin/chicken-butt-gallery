@@ -7,8 +7,10 @@ deployment (Vercel) through a pluggable data driver and Supabase.
 - **Data** (users, posts, communities, sessions, ...) -> Supabase Postgres, one
   JSONB blob per collection in a `kv` table (`STORE_DRIVER=supabase`).
 - **Uploads** (photos, avatars, covers) -> Supabase Storage (already supported).
-- **API** -> one serverless function (`api/[[...path]].js`) wrapping the existing
-  handler. **Static** frontend -> Vercel's CDN.
+- **API** -> one serverless function (`api/index.js`) wrapping the existing
+  handler; all `/api/*` paths reach it via the `rewrites` block in `vercel.json`
+  (`/api/:path* -> /api/index`), not Vercel filesystem path segments. **Static**
+  frontend -> Vercel's CDN.
 
 Local dev is unchanged: `node server.js` still uses the file driver and disk.
 
@@ -66,6 +68,13 @@ Project Settings -> Environment Variables (Production + Preview):
 
 Never set these with a client-exposed prefix and never commit `.supabase.json`.
 
+`TRUST_PROXY=1` tells the app to read the client IP for rate-limiting from the
+rightmost `X-Forwarded-For` hop the platform appends. Do **not** set
+`TRUST_CF_IP=1` on Vercel: the `CF-Connecting-IP` header is only trustworthy when a
+real Cloudflare edge fronts the app (e.g. Cloudflare -> Render). On Vercel that
+header is raw client input, so trusting it would let anyone forge a new IP per
+request and bypass every per-IP rate limit.
+
 ## 4. Deploy
 
 ```bash
@@ -75,7 +84,7 @@ vercel --prod # production
 ```
 
 Vercel auto-detects: static files at the root are served by the CDN, and
-`api/[[...path]].js` handles `/api/*`. `vercel.json` reapplies the CSP/security
+`api/index.js` handles `/api/*`. `vercel.json` reapplies the CSP/security
 headers to the static routes and gives the function a 15s timeout (the geocode
 call can take up to 5s).
 

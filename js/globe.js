@@ -146,7 +146,9 @@ export function createGlobe(container, { onPick } = {}) {
     requestFrame();
   }
 
+  let downOnCanvas = false;   // true only between a canvas pointerdown and its pointerup
   function onDown(e) {
+    downOnCanvas = true;
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (activePointers.size === 2) {   // second finger: switch from spin to pinch-zoom
       dragging = false; moved = true;
@@ -182,7 +184,11 @@ export function createGlobe(container, { onPick } = {}) {
     if (activePointers.size < 2) pinchStartDist = 0;
     dragging = false;
     renderer.domElement.style.cursor = 'grab';
-    if (!moved) pick(e);
+    // onUp is bound on window (so a drag can release off-canvas), but only pick when
+    // the interaction actually started on the canvas - otherwise every click anywhere
+    // on the page would re-run a full raycast while the atlas is open.
+    if (downOnCanvas && !moved) pick(e);
+    downOnCanvas = false;
     requestFrame();   // let any fling momentum bleed off, then the loop stops
   }
   function pick(e) {

@@ -3,6 +3,12 @@
    supplied by the app via api.communityResolver (dependency injection) so
    this module stays decoupled from shared UI state. */
 export const api = {
+  // The bearer token lives in localStorage (not an httpOnly cookie) by design: it
+  // keeps the app cookie-free, which removes the CSRF attack surface entirely. The
+  // compensating control against token theft is the strict CSP (script-src 'self',
+  // no 'unsafe-inline') plus disciplined output escaping, so page-context scripts
+  // can't be injected to read it. Do NOT relax that CSP, and keep session TTLs
+  // reasonable server-side.
   token: localStorage.getItem('pg_token') || '',
   communityResolver: () => null,
   async call(method, url, body) {
