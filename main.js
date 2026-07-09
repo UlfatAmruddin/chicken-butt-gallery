@@ -15,6 +15,7 @@ let me = null;               // logged-in user's profile
 let currentCommunity = null; // active private community
 let allCommunities = [];
 let pendingAuthAction = null;
+let pendingJoinedCommunityId = null;   // set when an invite registration already joined a community
 let communityPosts = [];     // posts fetched from the server
 let pool = [];               // community posts -> what the wall shows
 let communityActivity = [];
@@ -2613,6 +2614,8 @@ const aUser = document.getElementById('auth-user');
 const aPass = document.getElementById('auth-pass');
 const aName = document.getElementById('auth-name');
 const aNameRow = document.getElementById('auth-name-row');
+const aInvite = document.getElementById('auth-invite');
+const aInviteRow = document.getElementById('auth-invite-row');
 const authErr = document.getElementById('auth-err');
 const authSubmit = document.getElementById('auth-submit');
 const tabLogin = document.getElementById('tab-login');
@@ -2642,6 +2645,7 @@ function setAuthMode(mode) {
   tabLogin.classList.toggle('active', mode === 'login');
   tabRegister.classList.toggle('active', mode === 'register');
   aNameRow.hidden = mode === 'login';
+  aInviteRow.hidden = mode === 'login';   // signing up requires an invite; logging in does not
   authSubmit.textContent = mode === 'login' ? 'Log In' : 'Create Account';
   aPass.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
   authErr.textContent = '';
@@ -2907,6 +2911,9 @@ function showAuth(mode = 'login', action = null) {
   pendingAuthAction = action;
   setEntryMode(true);
   setAuthMode(mode);
+  // when arriving from an invite link the code is known - prefill it so the new
+  // member doesn't have to paste it again.
+  aInvite.value = (action && action.code) ? action.code : '';
   authErr.textContent = '';
   authEl.hidden = false;
   authEl.style.opacity = '';
@@ -3060,11 +3067,23 @@ async function joinInvite(code) {
 async function afterAuthSuccess() {
   const action = pendingAuthAction;
   pendingAuthAction = null;
+  const joinedId = pendingJoinedCommunityId;
+  pendingJoinedCommunityId = null;
   gsap.to(authEl, {
     autoAlpha: 0, duration: 0.35,
     onComplete: () => { authEl.hidden = true; authEl.style.opacity = ''; authEl.style.visibility = ''; },
   });
   updateLandingLogin();
+  // A brand-new account created via an invite was already joined to its community by
+  // the server, so enter it directly. Re-running joinInvite here would fail when the
+  // invite was single-use (it was just consumed by the registration).
+  if (joinedId) {
+    toast('JOINED COMMUNITY');
+    showOnboardingAfterEnter = true;
+    await loadCommunities();
+    await enterCommunity(joinedId);
+    return;
+  }
   if (action && action.type === 'invite') {
     pendingInviteCode = action.code;
     await joinInvite(action.code);
@@ -3093,12 +3112,19 @@ authForm.addEventListener('submit', async (e) => {
   authSubmit.disabled = true;
   try {
     const body = { username: aUser.value.trim(), password: aPass.value };
-    if (authMode === 'register') body.displayName = aName.value.trim();
+    if (authMode === 'register') {
+      body.displayName = aName.value.trim();
+      body.invite = parseInviteCode(aInvite.value);
+      if (!body.invite) { authErr.textContent = 'AN INVITE CODE OR LINK IS REQUIRED TO SIGN UP.'; return; }
+    }
     const r = await api.call('POST', authMode === 'login' ? '/api/login' : '/api/register', body);
     api.setToken(r.token);
     me = r.profile;
     updateMeChip();
     loadNotifications();
+    // an invite registration already joined its community server-side; remember it so
+    // afterAuthSuccess enters it directly instead of re-running the (now-consumed) join.
+    pendingJoinedCommunityId = (authMode === 'register' && r.community) ? r.community.id : null;
     await afterAuthSuccess();
   } catch (err) {
     authErr.textContent = String(err.message || 'SOMETHING WENT WRONG').toUpperCase();
