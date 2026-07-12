@@ -3,9 +3,10 @@ const crypto = require('crypto');
 
 const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON, init: storeInit, flush: storeFlush } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
+const supaAuth = require('./lib/supabase-auth');
 const {
   migrateCommunities, deleteUserAccount,
-  send, readBody, authUser, createSession, hashToken, tooManyAuthAttempts, tooManyWrites, tooManyGeocodes, hashPass,
+  send, readBody, authUser, resolveAuth, createAppUser, tooManyWrites, tooManyGeocodes,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
@@ -37,66 +38,39 @@ async function handleApi(req, res, pathname, params) {
   try {
     const seg = pathname.split('/').filter(Boolean);
 
+    // Resolve the Supabase identity once per request (cached), so every requireAuth /
+    // requireCommunity below can read it off req._auth synchronously.
+    req._auth = await resolveAuth(req);
+
     // global per-IP throttle on mutating requests to blunt upload/comment spam
     if (req.method !== 'GET' && req.method !== 'HEAD' && tooManyWrites(req)) {
       return send(res, 429, { error: 'Too many requests. Slow down.' });
     }
 
-    if (req.method === 'POST' && pathname === '/api/register') {
+    // public: the values the client needs to talk to Supabase Auth (both safe to expose)
+    if (req.method === 'GET' && pathname === '/api/config') {
+      return send(res, 200, supaAuth.publicConfig());
+    }
+
+    // first Google sign-in has no app profile yet -> the client posts a chosen username here
+    if (req.method === 'POST' && pathname === '/api/onboard') {
+      const a = req._auth;
+      if (!a) return send(res, 401, { error: 'Not logged in.' });
+      if (a.user) return send(res, 200, { profile: publicProfile(a.user) });   // already set up
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const username = clean(b.username, 20).toLowerCase();
-      const password = String(b.password || '');
-      if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(res, 400, { error: 'Username must be 3-20 chars: letters, numbers, underscores.' });
-      if (RESERVED_NAMES.has(username)) return send(res, 409, { error: 'That username is taken.' });
-      if (password.length < 8) return send(res, 400, { error: 'Password must be at least 8 characters.' });
-      // reserve the configured admin name(s) so they can't be claimed on a fresh instance
-      if (isAdminUsername(username)) return send(res, 409, { error: 'That username is taken.' });
+      if (RESERVED_NAMES.has(username) || isAdminUsername(username)) return send(res, 409, { error: 'That username is taken.' });
       if (users[username]) return send(res, 409, { error: 'That username is taken.' });
-      const salt = crypto.randomBytes(16).toString('hex');
-      users[username] = {
-        username,
-        displayName: clean(b.displayName, 40) || username,
-        salt,
-        hash: hashPass(password, salt),
-        bio: '', location: '', website: '',
-        joined: Date.now(),
-      };
-      saveJSON('users.json', users);
-      const token = createSession(username);
-      return send(res, 200, { token, profile: publicProfile(users[username]) });
-    }
-
-    if (req.method === 'POST' && pathname === '/api/login') {
-      const b = JSON.parse(await readBody(req, 64 * 1024));
-      const username = clean(b.username, 20).toLowerCase();
-      if (tooManyAuthAttempts(req, username)) return send(res, 429, { error: 'Too many attempts. Try again soon.' });
-      const u = users[username];
-      if (!u) {
-        // equal-work path: spend one scrypt so login time doesn't reveal whether the
-        // username exists (constant-time account-existence check)
-        hashPass(String(b.password || ''), DUMMY_LOGIN_SALT);
-        return send(res, 401, { error: 'Wrong username or password.' });
-      }
-      const tryHash = Buffer.from(hashPass(String(b.password || ''), u.salt), 'hex');
-      const goodHash = Buffer.from(u.hash, 'hex');
-      if (tryHash.length !== goodHash.length || !crypto.timingSafeEqual(tryHash, goodHash)) {
-        return send(res, 401, { error: 'Wrong username or password.' });
-      }
-      const token = createSession(username);
-      return send(res, 200, { token, profile: publicProfile(u) });
-    }
-
-    if (req.method === 'POST' && pathname === '/api/logout') {
-      const auth = authUser(req);
-      if (auth) { delete sessions[hashToken(auth.token)]; saveJSON('sessions.json', sessions); }
-      return send(res, 200, { ok: true });
+      const user = createAppUser(username, a.supabase, b.displayName);
+      return send(res, 200, { profile: publicProfile(user) });
     }
 
     if (req.method === 'GET' && pathname === '/api/me') {
-      const auth = requireAuth(req, res);
-      if (!auth) return;
-      return send(res, 200, publicProfile(auth.user));
+      const a = req._auth;
+      if (!a) return send(res, 401, { error: 'Not logged in.' });
+      if (!a.user) return send(res, 200, { needsOnboarding: true, email: a.supabase.email });
+      return send(res, 200, publicProfile(a.user));
     }
 
     if (req.method === 'PUT' && pathname === '/api/profile') {
@@ -131,15 +105,9 @@ async function handleApi(req, res, pathname, params) {
       // the reserved admin account can't be self-deleted (avoids nuking the whole
       // site + every community it owns by accident)
       if (isAdminUsername(u.username)) return send(res, 403, { error: 'The admin account cannot be deleted.' });
-      // require the current password to confirm (timing-safe), same check as login
-      const raw = String(await readBody(req, 8 * 1024).catch(() => Buffer.from('')));
-      const b = raw ? JSON.parse(raw) : {};
-      const tryHash = Buffer.from(hashPass(String(b.password || ''), u.salt), 'hex');
-      const goodHash = Buffer.from(u.hash, 'hex');
-      if (tryHash.length !== goodHash.length || !crypto.timingSafeEqual(tryHash, goodHash)) {
-        return send(res, 403, { error: 'Wrong password.' });
-      }
+      const supabaseId = u.supabaseId;
       await deleteUserAccount(u.username);   // cascade; marks all touched collections dirty
+      if (supabaseId) await supaAuth.deleteAuthUser(supabaseId);   // best-effort: remove the Google login too
       return send(res, 200, { ok: true });
     }
 

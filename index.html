@@ -840,19 +840,24 @@
       </g>
       <circle cx="48.5" cy="12.5" r="1.7" fill="#0a0a0a"/>
     </svg>
-    <h1 class="auth-title">CHICKEN BUTT GALLERY</h1>
-    <p class="auth-sub mono">A WALL FOR EVERYONE'S PHOTOS.<br>LOG IN TO STEP INSIDE.</p>
-    <div class="auth-tabs mono">
-      <button id="tab-login" class="active" type="button">LOG IN</button>
-      <button id="tab-register" type="button">CREATE ACCOUNT</button>
-    </div>
-    <form id="auth-form">
-      <label class="mono">USERNAME<input id="auth-user" autocomplete="username" maxlength="20" spellcheck="false" required></label>
-      <label class="mono" id="auth-name-row" hidden>DISPLAY NAME<input id="auth-name" maxlength="40" placeholder="Optional"></label>
-      <label class="mono">PASSWORD<input id="auth-pass" type="password" autocomplete="current-password" required></label>
+    <!-- sign-in view -->
+    <div id="auth-login">
+      <h1 class="auth-title">CHICKEN BUTT GALLERY</h1>
+      <p class="auth-sub mono">A WALL FOR EVERYONE'S PHOTOS.<br>SIGN IN TO STEP INSIDE.</p>
+      <button class="pill-white" id="google-login" type="button">Continue with Google</button>
       <p id="auth-err" class="mono err"></p>
-      <button class="pill-white" id="auth-submit" type="submit">Log In</button>
-    </form>
+    </div>
+    <!-- first sign-in: choose a public username -->
+    <div id="auth-onboard" hidden>
+      <h1 class="auth-title">ONE MORE STEP</h1>
+      <p id="onboard-email" class="mono dim"></p>
+      <p class="auth-sub mono">Pick a public username - this is how<br>friends will see you across the gallery.</p>
+      <form id="onboard-form">
+        <label class="mono">USERNAME<input id="onboard-username" autocomplete="off" maxlength="20" spellcheck="false" required></label>
+        <p id="onboard-err" class="mono err"></p>
+        <button class="pill-white" id="onboard-go" type="submit">Continue</button>
+      </form>
+    </div>
   </div>
 </section>
 

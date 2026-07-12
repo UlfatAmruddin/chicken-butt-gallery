@@ -2608,17 +2608,15 @@ const communityModal = document.getElementById('community-modal');
 const enterInviteModal = document.getElementById('enter-invite-modal');
 const inviteToolsModal = document.getElementById('invite-tools-modal');
 const authEl = document.getElementById('auth');
-const authForm = document.getElementById('auth-form');
-const aUser = document.getElementById('auth-user');
-const aPass = document.getElementById('auth-pass');
-const aName = document.getElementById('auth-name');
-const aNameRow = document.getElementById('auth-name-row');
 const authErr = document.getElementById('auth-err');
-const authSubmit = document.getElementById('auth-submit');
-const tabLogin = document.getElementById('tab-login');
-const tabRegister = document.getElementById('tab-register');
+const authLoginView = document.getElementById('auth-login');
+const authOnboardView = document.getElementById('auth-onboard');
+const googleLoginBtn = document.getElementById('google-login');
+const onboardForm = document.getElementById('onboard-form');
+const onboardInput = document.getElementById('onboard-username');
+const onboardErr = document.getElementById('onboard-err');
+const onboardEmailEl = document.getElementById('onboard-email');
 const meChip = document.getElementById('me-chip');
-let authMode = 'login';
 let pendingInviteCode = '';
 let roomOpen = false;
 let adminOpen = false;
@@ -2637,17 +2635,14 @@ function overlayOpen() {
     || detail.style.display === 'block';
 }
 
-function setAuthMode(mode) {
-  authMode = mode;
-  tabLogin.classList.toggle('active', mode === 'login');
-  tabRegister.classList.toggle('active', mode === 'register');
-  aNameRow.hidden = mode === 'login';
-  authSubmit.textContent = mode === 'login' ? 'Log In' : 'Create Account';
-  aPass.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+// the auth gate has two views inside one box: Google sign-in, and (first time only)
+// the username-setup form. Only one shows at a time.
+function showAuthView(view) {   // 'login' | 'onboard'
+  authLoginView.hidden = view !== 'login';
+  authOnboardView.hidden = view !== 'onboard';
   authErr.textContent = '';
+  onboardErr.textContent = '';
 }
-tabLogin.addEventListener('click', () => setAuthMode('login'));
-tabRegister.addEventListener('click', () => setAuthMode('register'));
 
 function updateMeChip() {
   if (!me) { meChip.hidden = true; return; }
@@ -2904,30 +2899,77 @@ async function showCommunityHub(clearHash = true) {
 }
 
 function showAuth(mode = 'login', action = null) {
-  pendingAuthAction = action;
+  pendingAuthAction = action;   // mode is vestigial now (Google is the only sign-in)
   setEntryMode(true);
-  setAuthMode(mode);
-  authErr.textContent = '';
+  showAuthView('login');
   authEl.hidden = false;
   authEl.style.opacity = '';
   authEl.style.visibility = '';
-  setTimeout(() => aUser.focus(), 40);
 }
 
 async function bootstrapSession() {
-  if (api.token) {
+  await api.loadConfig();
+  const justLoggedIn = captureOAuthRedirect();   // Supabase returns tokens in the URL hash
+  restorePendingAction();   // an invite/create intent stashed before the Google redirect
+  if (api.hasSession()) {
     try {
-      me = await api.call('GET', '/api/me');
+      const r = await api.call('GET', '/api/me');
+      if (r && r.needsOnboarding) { showUsernameSetup(r.email); return; }
+      me = r;
       authEl.hidden = true;
       updateMeChip();
       updateLandingLogin();
       loadNotifications();
+      if (justLoggedIn) await afterAuthSuccess();   // a fresh sign-in proceeds into the app / pending action
       return;
-    } catch { api.setToken(''); }
+    } catch { api.clearSession(); }
   }
   me = null;
   updateMeChip();
   updateLandingLogin();
+}
+
+// After Google sign-in Supabase redirects back with #access_token=...&refresh_token=...
+// Returns true when it consumed a fresh login redirect.
+function captureOAuthRedirect() {
+  const hash = location.hash || '';
+  if (hash.includes('access_token=')) {
+    const p = new URLSearchParams(hash.slice(1));
+    api.setSession({
+      access_token: p.get('access_token'),
+      refresh_token: p.get('refresh_token'),
+      expires_in: parseInt(p.get('expires_in') || '0', 10),
+    });
+    history.replaceState(null, '', location.pathname + location.search);   // strip tokens from the URL
+    return true;
+  }
+  if (hash.includes('error=')) {
+    const p = new URLSearchParams(hash.slice(1));
+    authErr.textContent = String(p.get('error_description') || 'Sign-in failed.').toUpperCase();
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  return false;
+}
+
+// The Google redirect is a full page load, so any in-memory intent (join this invite,
+// create a community) is stashed in sessionStorage before leaving and restored here.
+function restorePendingAction() {
+  try {
+    const s = sessionStorage.getItem('pg_pending');
+    if (s) { pendingAuthAction = JSON.parse(s); sessionStorage.removeItem('pg_pending'); }
+  } catch { /* ignore */ }
+}
+
+// first Google sign-in: no app profile yet, so ask for a public username
+function showUsernameSetup(email) {
+  setEntryMode(true);
+  hideEntryScreens();
+  onboardEmailEl.textContent = email ? ('Signed in as ' + email) : '';
+  showAuthView('onboard');
+  authEl.hidden = false;
+  authEl.style.opacity = '';
+  authEl.style.visibility = '';
+  setTimeout(() => onboardInput.focus(), 40);
 }
 
 async function loadCommunities() {
@@ -3087,28 +3129,32 @@ async function afterAuthSuccess() {
   await showCommunityHub(false);
 }
 
-authForm.addEventListener('submit', async (e) => {
+googleLoginBtn.addEventListener('click', () => {
+  if (!api.supabaseUrl) { authErr.textContent = 'SIGN-IN IS NOT CONFIGURED YET.'; return; }
+  // survive the full-page OAuth redirect: stash any pending intent (join invite / create)
+  if (pendingAuthAction) { try { sessionStorage.setItem('pg_pending', JSON.stringify(pendingAuthAction)); } catch {} }
+  location.href = api.googleLoginUrl();   // -> Supabase -> Google -> back to the app with a session
+});
+
+onboardForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  authErr.textContent = '';
-  authSubmit.disabled = true;
+  onboardErr.textContent = '';
+  onboardInput.disabled = true;
   try {
-    const body = { username: aUser.value.trim(), password: aPass.value };
-    if (authMode === 'register') body.displayName = aName.value.trim();
-    const r = await api.call('POST', authMode === 'login' ? '/api/login' : '/api/register', body);
-    api.setToken(r.token);
+    const r = await api.call('POST', '/api/onboard', { username: onboardInput.value.trim() });
     me = r.profile;
     updateMeChip();
     loadNotifications();
     await afterAuthSuccess();
   } catch (err) {
-    authErr.textContent = String(err.message || 'SOMETHING WENT WRONG').toUpperCase();
+    onboardErr.textContent = String(err.message || 'COULD NOT SAVE').toUpperCase();
   } finally {
-    authSubmit.disabled = false;
+    onboardInput.disabled = false;
   }
 });
 
 function openCommunityModal() {
-  if (!me) { showAuth('register', { type: 'create' }); return; }
+  if (!me) { showAuth('login', { type: 'create' }); return; }
   document.getElementById('cm-name').value = '';
   document.getElementById('cm-desc').value = '';
   document.getElementById('cm-err').textContent = '';
@@ -3934,8 +3980,7 @@ document.getElementById('onboarding-upload').addEventListener('click', () => { c
 document.getElementById('onboarding-profile').addEventListener('click', () => { closeOnboarding(); openPeople(me.username); });
 
 async function logoutEverywhere() {
-  try { await api.call('POST', '/api/logout'); } catch {}
-  api.setToken('');
+  await api.supabaseLogout();
   me = null;
   allCommunities = [];
   pendingAuthAction = null;
@@ -3950,11 +3995,11 @@ document.getElementById('pe-delete-account').addEventListener('click', async () 
   const peErr = document.getElementById('pe-err');
   peErr.textContent = '';
   if (!confirm('Permanently delete your account? This removes your profile, any communities you OWN (and all their photos), and every photo you posted. This cannot be undone.')) return;
-  const password = prompt('Type your password to confirm account deletion:');
-  if (!password) return;
+  const typed = prompt('Type your username (' + me.username + ') to permanently delete your account:');
+  if (typed !== me.username) return;
   try {
-    await api.call('DELETE', '/api/account', { password });
-    api.setToken('');
+    await api.call('DELETE', '/api/account');
+    await api.supabaseLogout();
     me = null;
     allCommunities = [];
     pendingAuthAction = null;
@@ -3979,7 +4024,12 @@ document.getElementById('hub-logout').addEventListener('click', logoutEverywhere
 // returns to the hero/welcome page (same as the HOME buttons).
 document.querySelector('.logo').addEventListener('click', (e) => { e.preventDefault(); showLanding(true); });
 document.getElementById('invite-home').addEventListener('click', () => showLanding(true));
-document.getElementById('auth-home').addEventListener('click', () => showLanding(true));
+document.getElementById('auth-home').addEventListener('click', async () => {
+  // bailing out of the username step means abandoning a half-finished signup: clear
+  // the Google session so a reload doesn't drop straight back into onboarding.
+  if (!authOnboardView.hidden) await api.supabaseLogout();
+  showLanding(true);
+});
 document.getElementById('invite-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login', pendingInviteCode ? { type: 'invite', code: pendingInviteCode } : null); });
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
 communityChip.addEventListener('click', openCommunityRoom);

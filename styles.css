@@ -889,9 +889,10 @@ textarea { resize: vertical; }
 .auth-tabs { display: flex; justify-content: center; gap: 26px; margin-bottom: 22px; }
 .auth-tabs button { color: #6f6f6f; padding: 6px 2px; border-bottom: 1px solid transparent; }
 .auth-tabs button.active { color: #fff; border-bottom-color: #fff; }
-#auth-form { text-align: left; }
-#auth-form label { display: block; margin-bottom: 14px; color: #9a9a9a; }
-#auth-form .pill-white { width: 100%; margin-top: 8px; }
+#auth form { text-align: left; }
+#auth label { display: block; margin-bottom: 14px; color: #9a9a9a; }
+#auth .pill-white { width: 100%; margin-top: 12px; }
+#onboard-email { margin-bottom: 6px; }
 
 /* ---------- HUD additions ---------- */
 /* top-right HUD: notification bell + @username chip, packed from the right edge
@@ -2386,14 +2387,14 @@ html, body {
 #community-hub .ghost-pill:hover, #invite-view .ghost-pill:hover { border-color: #fff; transform: none; }
 
 /* --- inputs / textareas -> clean underline fields --- */
-#auth #auth-form input, #community-modal input, #community-modal textarea, #enter-invite-modal input {
+#auth input, #community-modal input, #community-modal textarea, #enter-invite-modal input {
   border-radius: 0; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.22);
   padding-left: 0; padding-right: 0; transition: border-color 0.25s;
 }
-#auth #auth-form input:focus, #community-modal input:focus, #community-modal textarea:focus, #enter-invite-modal input:focus {
+#auth input:focus, #community-modal input:focus, #community-modal textarea:focus, #enter-invite-modal input:focus {
   outline: none; border-bottom-color: #fff;
 }
-#auth #auth-form label, #community-modal label, #enter-invite-modal label {
+#auth label, #community-modal label, #enter-invite-modal label {
   font-family: 'Space Mono', monospace; letter-spacing: 0.08em;
 }
 
