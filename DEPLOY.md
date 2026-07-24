@@ -63,8 +63,25 @@ Project Settings -> Environment Variables (Production + Preview):
 | `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
 | `SUPABASE_KEY` | your service-role key (secret, server-only) |
 | `SUPABASE_BUCKET` | `photos` |
+| `SUPABASE_ANON_KEY` | your **public** anon / publishable key (required for login) |
+| `ADMIN_EMAIL` | the site owner's Google address (required to keep owner/admin) |
 | `TRUST_PROXY` | `1` |
 | `SUPABASE_KV_TABLE` | `kv` (only if you named it differently) |
+| `ADMIN_PROVIDER` | `google` (default; the provider trusted for the owner link) |
+
+**The two Supabase keys are not interchangeable.** `SUPABASE_KEY` is the
+service-role **secret** (server-only, bypasses RLS). `SUPABASE_ANON_KEY` is the
+**public** key and is deliberately served to browsers by `GET /api/config` - that is
+how Supabase Auth is designed. Putting the service-role key in `SUPABASE_ANON_KEY`
+would hand every visitor full database access; the server detects and refuses to
+serve a key that looks secret, but do not rely on that.
+
+`ADMIN_EMAIL` links the owner's Google account to the reserved admin username on
+first sign-in. The link also requires the address to be **confirmed** and to come
+from the trusted provider (`ADMIN_PROVIDER`, default `google`), so knowing the
+address is not enough to claim admin. For that to hold, the Supabase project should
+keep **Confirm email ON** and ideally disable the email/password provider so Google
+is the only way in.
 
 Never set these with a client-exposed prefix and never commit `.supabase.json`.
 

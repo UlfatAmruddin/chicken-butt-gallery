@@ -6,7 +6,7 @@ const { securityHeaders, serveStatic } = require('./lib/static');
 const supaAuth = require('./lib/supabase-auth');
 const {
   migrateCommunities, deleteUserAccount,
-  send, readBody, authUser, resolveAuth, createAppUser, tooManyWrites, tooManyGeocodes,
+  send, readBody, authUser, resolveAuth, createAppUser, tooManyWrites, tooManyApiRequests, tooManyGeocodes,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
@@ -27,6 +27,7 @@ const REACTION_EMOJI = ['heart', 'laugh', 'wow', 'sad', 'fire'];
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;   // leaked invite links stop working after 14 days
 const MAX_COMMUNITIES_PER_USER = 50;
 const MAX_ACTIVE_INVITES_PER_COMMUNITY = 20;
+const MAX_PHOTOS_PER_USER = 5000;   // generous for a friend group; bounds storage abuse
 // fixed salt used only to spend one scrypt on the login "user not found" branch,
 // so response time doesn't reveal whether a username exists (constant-time check).
 const DUMMY_LOGIN_SALT = 'cbg-login-timing-equalizer';
@@ -38,6 +39,19 @@ async function handleApi(req, res, pathname, params) {
   try {
     const seg = pathname.split('/').filter(Boolean);
 
+    // Blanket per-IP ceiling on every /api/* request. This runs FIRST, before any token
+    // validation, so a flood can't drive outbound Supabase auth traffic (reads were
+    // previously unthrottled entirely).
+    if (tooManyApiRequests(req)) {
+      return send(res, 429, { error: 'Too many requests. Slow down.' });
+    }
+
+    // public + unauthenticated: the values the client needs to reach Supabase Auth.
+    // Answered before resolveAuth so it never costs a token validation.
+    if (req.method === 'GET' && pathname === '/api/config') {
+      return send(res, 200, supaAuth.publicConfig());
+    }
+
     // Resolve the Supabase identity once per request (cached), so every requireAuth /
     // requireCommunity below can read it off req._auth synchronously.
     req._auth = await resolveAuth(req);
@@ -45,11 +59,6 @@ async function handleApi(req, res, pathname, params) {
     // global per-IP throttle on mutating requests to blunt upload/comment spam
     if (req.method !== 'GET' && req.method !== 'HEAD' && tooManyWrites(req)) {
       return send(res, 429, { error: 'Too many requests. Slow down.' });
-    }
-
-    // public: the values the client needs to talk to Supabase Auth (both safe to expose)
-    if (req.method === 'GET' && pathname === '/api/config') {
-      return send(res, 200, supaAuth.publicConfig());
     }
 
     // first Google sign-in has no app profile yet -> the client posts a chosen username here
@@ -580,6 +589,13 @@ async function handleApi(req, res, pathname, params) {
     if (req.method === 'POST' && pathname === '/api/photos') {
       const ctx = requireCommunity(req, res, params);
       if (!ctx) return;
+      // Cap photos per account so one member can't fill the storage bucket (each image
+      // is up to 12MB). Mirrors the existing community/invite caps; admins bypass.
+      // Checked BEFORE reading the body so a rejected upload costs no bandwidth.
+      if (!isAdminUsername(ctx.auth.user.username) &&
+          userPhotoCount(ctx.auth.user.username) >= MAX_PHOTOS_PER_USER) {
+        return send(res, 429, { error: 'You have reached the maximum number of photos.' });
+      }
       // 20MB body: a valid 12MB image base64-expands to ~16MB, so the default
       // limit would 413 max-size uploads before saveImage's friendly check runs.
       const b = JSON.parse(await readBody(req, 20 * 1024 * 1024));
