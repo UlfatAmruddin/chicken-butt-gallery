@@ -90,7 +90,15 @@ export const api = {
     // token expired between ensureFresh and the request? refresh once and retry.
     if (r.status === 401 && this.refresh && await this.refreshSession()) r = await doFetch();
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.statusText);
+    if (!r.ok) {
+      // 503 = the server could not CHECK the token (Supabase blip), which is not the
+      // same as being logged out. Flag it so callers never clear a valid session.
+      const err = new Error(j.error || r.statusText);
+      err.status = r.status;
+      if (r.status === 503) err.transient = true;
+      if (j && j.needsConfirmation) { err.needsConfirmation = true; err.details = j; }
+      throw err;
+    }
     return j;
   },
 };

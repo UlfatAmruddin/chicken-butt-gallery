@@ -2922,7 +2922,13 @@ async function bootstrapSession() {
       loadNotifications();
       if (justLoggedIn) await afterAuthSuccess();   // a fresh sign-in proceeds into the app / pending action
       return;
-    } catch { api.clearSession(); }
+    } catch (err) {
+      // Only drop the session when the server actually rejected the token. A 503
+      // means it could not reach Supabase to check - keep the session and let the
+      // user retry, otherwise an upstream blip logs everyone out for real.
+      if (err && err.transient) { toast('SIGN-IN CHECK UNAVAILABLE. RETRY IN A MOMENT.'); return; }
+      api.clearSession();
+    }
   }
   me = null;
   updateMeChip();
@@ -3997,8 +4003,7 @@ document.getElementById('pe-delete-account').addEventListener('click', async () 
   if (!confirm('Permanently delete your account? This removes your profile, any communities you OWN (and all their photos), and every photo you posted. This cannot be undone.')) return;
   const typed = prompt('Type your username (' + me.username + ') to permanently delete your account:');
   if (typed !== me.username) return;
-  try {
-    await api.call('DELETE', '/api/account');
+  const finish = async () => {
     await api.supabaseLogout();
     me = null;
     allCommunities = [];
@@ -4008,7 +4013,28 @@ document.getElementById('pe-delete-account').addEventListener('click', async () 
     updateLandingLogin();
     toast('ACCOUNT DELETED');
     await showLanding(true);
+  };
+  try {
+    await api.call('DELETE', '/api/account');
+    await finish();
   } catch (e) {
+    // The server refuses to silently destroy other members' content: it reports which
+    // communities would go with you, and only proceeds on an explicit acknowledgement.
+    if (e && e.needsConfirmation) {
+      const list = (e.details.communities || [])
+        .map(c => `  - ${c.name} (${c.memberCount} members)`).join('\n');
+      if (!confirm(`You own these communities with other people in them:\n\n${list}\n\nDeleting your account also deletes those communities and EVERY member's photos in them. Continue?`)) {
+        peErr.textContent = 'ACCOUNT NOT DELETED.';
+        return;
+      }
+      try {
+        await api.call('DELETE', '/api/account', { deleteOwnedCommunities: true });
+        await finish();
+      } catch (e2) {
+        peErr.textContent = String(e2.message || 'COULD NOT DELETE ACCOUNT').toUpperCase();
+      }
+      return;
+    }
     peErr.textContent = String(e.message || 'COULD NOT DELETE ACCOUNT').toUpperCase();
   }
 });

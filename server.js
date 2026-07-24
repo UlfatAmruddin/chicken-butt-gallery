@@ -1,12 +1,12 @@
 const http = require('http');
 const crypto = require('crypto');
 
-const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON, init: storeInit, flush: storeFlush } = require('./lib/store');
+const { users, sessions, posts, albums, communities, invites, auditEvents, notifications, saveJSON, init: storeInit, flush: storeFlush, pendingWrites: storePending } = require('./lib/store');
 const { securityHeaders, serveStatic } = require('./lib/static');
 const supaAuth = require('./lib/supabase-auth');
 const {
   migrateCommunities, deleteUserAccount,
-  send, readBody, authUser, resolveAuth, createAppUser, tooManyWrites, tooManyApiRequests, tooManyGeocodes,
+  send, readBody, authUser, resolveAuth, createAppUser, findUserBySupabaseId, tooManyWrites, tooManyApiRequests, tooManyGeocodes,
   isAdminUsername, clean, slugify, uniqueCommunityId, findCommunity,
   communityMembers, communityBans, communityPrompts, communityPinned, communityScopes, roleFor,
   isCommunityMember, canAdminCommunity, canOwnCommunity, canChangeMember, canRemoveMember,
@@ -27,7 +27,13 @@ const REACTION_EMOJI = ['heart', 'laugh', 'wow', 'sad', 'fire'];
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;   // leaked invite links stop working after 14 days
 const MAX_COMMUNITIES_PER_USER = 50;
 const MAX_ACTIVE_INVITES_PER_COMMUNITY = 20;
-const MAX_PHOTOS_PER_USER = 5000;   // generous for a friend group; bounds storage abuse
+// Growth caps. These bound BOTH storage cost and the cost of the whole-blob store:
+// every mutation deep-clones and re-uploads an entire collection, so a huge posts or
+// albums array makes every like/comment expensive for everyone. 5000 photos x 12MB
+// was ~60GB per account - far past what the plan or the blob model can carry.
+const MAX_PHOTOS_PER_USER = 600;
+const MAX_ALBUMS_PER_USER = 200;
+const MAX_COMMENTS_PER_POST = 500;
 // fixed salt used only to spend one scrypt on the login "user not found" branch,
 // so response time doesn't reveal whether a username exists (constant-time check).
 const DUMMY_LOGIN_SALT = 'cbg-login-timing-equalizer';
@@ -54,7 +60,14 @@ async function handleApi(req, res, pathname, params) {
 
     // Resolve the Supabase identity once per request (cached), so every requireAuth /
     // requireCommunity below can read it off req._auth synchronously.
-    req._auth = await resolveAuth(req);
+    const authResult = await resolveAuth(req);
+    // We could not verify the token (Supabase down/slow/throttled). Answer 503 so the
+    // client retries; a 401 here would tell every browser its session is dead and
+    // mass-log-out the site over a transient upstream blip.
+    if (authResult === supaAuth.UPSTREAM) {
+      return send(res, 503, { error: 'Sign-in check unavailable. Please retry.' });
+    }
+    req._auth = authResult;
 
     // global per-IP throttle on mutating requests to blunt upload/comment spam
     if (req.method !== 'GET' && req.method !== 'HEAD' && tooManyWrites(req)) {
@@ -71,6 +84,10 @@ async function handleApi(req, res, pathname, params) {
       if (!/^[a-z0-9_]{3,20}$/.test(username)) return send(res, 400, { error: 'Username must be 3-20 chars: letters, numbers, underscores.' });
       if (RESERVED_NAMES.has(username) || isAdminUsername(username)) return send(res, 409, { error: 'That username is taken.' });
       if (users[username]) return send(res, 409, { error: 'That username is taken.' });
+      // Re-check AFTER the awaits above: the earlier `a.user` test happened before
+      // readBody, so concurrent requests on one token could all pass it and each mint
+      // a profile. From here to createAppUser there is no await, so this is atomic.
+      if (findUserBySupabaseId(a.supabase.id)) return send(res, 409, { error: 'This account already has a profile.' });
       const user = createAppUser(username, a.supabase, b.displayName);
       return send(res, 200, { profile: publicProfile(user) });
     }
@@ -114,8 +131,28 @@ async function handleApi(req, res, pathname, params) {
       // the reserved admin account can't be self-deleted (avoids nuking the whole
       // site + every community it owns by accident)
       if (isAdminUsername(u.username)) return send(res, 403, { error: 'The admin account cannot be deleted.' });
+      // Deleting an owner cascades into every community they own - destroying OTHER
+      // members' photos, albums and comments. Never do that on an unqualified request:
+      // report the blast radius and require an explicit acknowledgement.
+      const raw = String(await readBody(req, 8 * 1024).catch(() => Buffer.from('')));
+      const b = raw ? JSON.parse(raw) : {};
+      const ownedWithOthers = communities
+        .filter(c => c.owner === u.username)
+        .map(c => ({ id: c.id, name: c.name, memberCount: Object.keys(communityMembers(c)).length }))
+        .filter(c => c.memberCount > 1);
+      if (ownedWithOthers.length && b.deleteOwnedCommunities !== true) {
+        return send(res, 409, {
+          error: 'You own communities with other members. Deleting your account would also delete their photos.',
+          needsConfirmation: true,
+          communities: ownedWithOthers,
+        });
+      }
       const supabaseId = u.supabaseId;
       await deleteUserAccount(u.username);   // cascade; marks all touched collections dirty
+      // Persist BEFORE the irreversible external delete. If the store write fails the
+      // account survives and the user can retry; deleting the Google login first would
+      // leave them locked out of an account that still exists.
+      await storeFlush();
       if (supabaseId) await supaAuth.deleteAuthUser(supabaseId);   // best-effort: remove the Google login too
       return send(res, 200, { ok: true });
     }
@@ -720,6 +757,11 @@ async function handleApi(req, res, pathname, params) {
       const text = clean(b.text, 500);
       if (!text) return send(res, 400, { error: 'Write something first.' });
       if (!Array.isArray(post.comments)) post.comments = [];
+      // bound the thread: comments live inside the posts blob, which is re-cloned and
+      // re-uploaded in full on every single like/comment
+      if (post.comments.length >= MAX_COMMENTS_PER_POST) {
+        return send(res, 429, { error: 'This photo has reached its comment limit.' });
+      }
       // optional single-level reply: parentId must name an existing top-level
       // comment on this same post (a comment whose own parentId is falsy).
       let parentId = '';
@@ -881,8 +923,16 @@ async function handleApi(req, res, pathname, params) {
         }
       });
       if (usersChanged) saveJSON('users.json', users);
-      // never let a stale spotlight survive its photo
-      if (c && c.spotlightPostId === photoId) { c.spotlightPostId = ''; saveJSON('communities.json', communities); }
+      // never let a stale spotlight or pin survive its photo (the bulk-delete path in
+      // deleteOnePost cleans pins too; this handler used to miss them)
+      let communityChanged = false;
+      if (c && c.spotlightPostId === photoId) { c.spotlightPostId = ''; communityChanged = true; }
+      if (c) {
+        const pins = communityPinned(c);
+        const nextPins = pins.filter(id => id !== photoId);
+        if (nextPins.length !== pins.length) { c.pinnedPostIds = nextPins; communityChanged = true; }
+      }
+      if (communityChanged) saveJSON('communities.json', communities);
       addAudit(post.communityId, auth.user.username, 'photo.deleted', photoId, { title: post.title });
       return send(res, 200, { ok: true });
     }
@@ -915,6 +965,11 @@ async function handleApi(req, res, pathname, params) {
       const b = JSON.parse(await readBody(req, 64 * 1024));
       const name = clean(b.name, 60);
       if (!name) return send(res, 400, { error: 'Give the album a name.' });
+      // albums was the one growable collection with no ceiling
+      if (!isAdminUsername(ctx.auth.user.username) &&
+          albums.filter(a => a.owner === ctx.auth.user.username).length >= MAX_ALBUMS_PER_USER) {
+        return send(res, 429, { error: 'You have reached the maximum number of albums.' });
+      }
       const album = {
         id: crypto.randomBytes(8).toString('hex'),
         communityId: ctx.community.id,
@@ -1103,23 +1158,49 @@ async function onRequest(req, res) {
   await res._flushDone;
 }
 
-module.exports = { onRequest, handleApi };
+module.exports = { onRequest, handleApi, installShutdownDrain };
 
 // Local dev only: bind a long-lived listener. On a serverless host this module
 // is imported (require.main !== module) and the exported handler is invoked per
 // request, so nothing listens. Bind BOTH loopback stacks so http://localhost
 // works however the OS resolves it (Windows often prefers IPv6 ::1).
+/* Drain on shutdown. Render sends SIGTERM on every deploy/restart; Node's default
+   disposition exits immediately, dropping any write still queued after a failed
+   flush (the retry timer is unref'd, so it never holds the process open either). */
+function installShutdownDrain(servers) {
+  let closing = false;
+  const bye = async (sig) => {
+    if (closing) return;
+    closing = true;
+    servers.forEach(s => { try { s.close(); } catch { /* already closing */ } });
+    for (let i = 0; i < 3; i++) {
+      if (!storePending()) break;
+      try { await storeFlush(); break; } catch (e) { console.error('[shutdown] flush failed', e && e.message); }
+    }
+    if (storePending()) console.error(`[shutdown] ${storePending()} collection(s) NOT persisted`);
+    console.log(`[shutdown] ${sig}: exiting`);
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => bye('SIGTERM'));
+  process.on('SIGINT', () => bye('SIGINT'));
+}
+
 if (require.main === module) {
   const PORT = process.env.PORT || 8173;
   if (process.env.PORT || process.env.HOST) {
     // Hosted platform (Render/Railway/Fly): bind all interfaces so the platform's
     // router can reach the process. These set PORT (and expect 0.0.0.0).
     const HOST = process.env.HOST || '0.0.0.0';
-    http.createServer(onRequest).listen(PORT, HOST, () => console.log(`serving on ${HOST}:${PORT}`));
+    const s = http.createServer(onRequest);
+    s.listen(PORT, HOST, () => console.log(`serving on ${HOST}:${PORT}`));
+    installShutdownDrain([s]);
   } else {
     // Local dev: loopback only, both stacks so http://localhost works however the
     // OS resolves it (Windows often prefers IPv6 ::1).
-    http.createServer(onRequest).listen(PORT, '127.0.0.1', () => console.log(`serving at http://localhost:${PORT}`));
-    http.createServer(onRequest).listen(PORT, '::1').on('error', () => {});
+    const s4 = http.createServer(onRequest);
+    s4.listen(PORT, '127.0.0.1', () => console.log(`serving at http://localhost:${PORT}`));
+    const s6 = http.createServer(onRequest);
+    s6.listen(PORT, '::1').on('error', () => {});
+    installShutdownDrain([s4, s6]);
   }
 }
