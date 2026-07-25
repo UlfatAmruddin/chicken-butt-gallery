@@ -3,7 +3,7 @@
    in, no shared state), so they live outside the client god-file. The mosaic
    poster lives in js/mosaic.js; all three use the shared canvas chrome in util.js.
    loadCors keeps Supabase-hosted photos from tainting the canvas before toBlob. */
-import { coverDraw, mediaSrc, drawShareBackdrop, fitHeadingFont, recapDateLabel } from './util.js';
+import { coverDraw, mediaSrc, drawShareBackdrop, fitHeadingFont, recapDateLabel, clipText } from './util.js';
 import { toast } from './toast.js';
 
 /* CORS-enabled image load shared by the share-card renderers so photos on
@@ -46,8 +46,10 @@ export async function renderRecapCard(r, communityName) {
 
   const name = String((r.community && r.community.name) || communityName || 'OUR SPHERE').toUpperCase();
   x.fillStyle = '#ffffff';
+  // fitHeadingFont stops shrinking at its 44px floor, so a very long community
+  // name still runs off the card edge - clip whatever is left over at that size.
   fitHeadingFont(x, name, W - pad * 2, 92, 44);
-  x.fillText(name, pad, pad + 108);
+  x.fillText(clipText(x, name, W - pad * 2), pad, pad + 108);
 
   x.fillStyle = '#9a9a9a';
   x.font = '400 24px "Space Mono"';
@@ -114,12 +116,19 @@ export async function renderRecapCard(r, communityName) {
     x.font = '700 22px "Space Mono"';
     x.fillText('MOST ACTIVE', pad, ty);
     ty += 44;
+    // each row is a user-supplied name (left) against a right-aligned count, so
+    // they share one row from opposite edges. the count is app-generated and the
+    // part worth keeping, so it is measured first and the name gets the rest:
+    // without a budget a long display name drew straight through the count.
+    const rowW = W - pad * 2;
     members.forEach(m => {
       const who = String(m.displayName || m.username || 'someone');
+      const count = `${m.photoCount || 0} PHOTO${m.photoCount === 1 ? '' : 'S'}`;
+      x.font = '400 22px "Space Mono"';
+      const countW = x.measureText(count).width;
       x.fillStyle = '#e8e8e8';
       x.font = '500 30px Inter';
-      x.fillText(who, pad, ty);
-      const count = `${m.photoCount || 0} PHOTO${m.photoCount === 1 ? '' : 'S'}`;
+      x.fillText(clipText(x, who, rowW - countW - gap), pad, ty);
       x.fillStyle = '#7a7a7a';
       x.font = '400 22px "Space Mono"';
       x.textAlign = 'right';
@@ -154,21 +163,29 @@ export async function renderAlbumContactSheet(album, posts, communityName) {
   x.font = '700 22px "Space Mono"';
   x.fillText('SHARED ALBUM', pad, pad + 8);
 
+  const headerW = W - pad * 2;
   const name = String(album.name || 'ALBUM').toUpperCase();
   x.fillStyle = '#ffffff';
-  fitHeadingFont(x, name, W - pad * 2, 84, 40);
-  x.fillText(name, pad, pad + 104);
+  // fitHeadingFont stops shrinking at its 40px floor, so a very long album name
+  // still runs off the card edge - clip whatever is left over at that size.
+  fitHeadingFont(x, name, headerW, 84, 40);
+  x.fillText(clipText(x, name, headerW), pad, pad + 104);
 
   const community = String(communityName || 'OUR SPHERE').toUpperCase();
   x.fillStyle = '#9a9a9a';
   x.font = '400 24px "Space Mono"';
-  x.fillText(community, pad, pad + 148);
+  // this line has no auto-shrink, so the community name needs the card width as
+  // an explicit budget or it draws through the inset border
+  x.fillText(clipText(x, community, headerW), pad, pad + 148);
 
   const total = posts.length;
-  const sub = `@${album.owner || 'someone'} / ${total} PHOTO${total === 1 ? '' : 'S'}`.toUpperCase();
+  const tail = ` / ${total} PHOTO${total === 1 ? '' : 'S'}`.toUpperCase();
+  const owner = `@${album.owner || 'someone'}`.toUpperCase();
   x.fillStyle = '#7a7a7a';
   x.font = '400 22px "Space Mono"';
-  x.fillText(sub, pad, pad + 184);
+  // only the handle is user-supplied, so the count is measured first and the
+  // handle takes the remainder - clipping the whole line would drop the count
+  x.fillText(clipText(x, owner, headerW - x.measureText(tail).width) + tail, pad, pad + 184);
 
   // photo grid - up to 12 covers, 3 columns, rounded cells with a thin frame.
   // cellH is fitted to the remaining vertical space (not forced square) so the

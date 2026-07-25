@@ -35,6 +35,18 @@
   --border: #262626;                /* hairline panel borders */
   --panel-bg: #141414;              /* rows inside panels (notif / activity) */
   --overlay-bg: #050505;            /* full-screen page overlays (detail/people/albums) */
+  --danger: #e05a5a;                /* destructive actions, at rest as well as on hover */
+
+  /* ---- display type scale ----
+     one ramp instead of five ad-hoc clamps. each step is bounded by vh as well
+     as vw so a headline can never eat the fold on a short window, which is what
+     made PEOPLE / ALBUMS / a photo title outrank the photograph itself.
+     --fs-hero   landing + room cover, the only places that get to shout
+     --fs-page   overlay page signposts (PEOPLE, ALBUMS, PLACES, GALLERY, ADMIN)
+     --fs-entry  hub / invite / recap headings inside a padded box */
+  --fs-hero:  clamp(40px, min(6.4vw, 11vh), 92px);
+  --fs-page:  clamp(30px, min(3.6vw, 6.4vh), 54px);
+  --fs-entry: clamp(30px, min(4.4vw, 7.6vh), 64px);
 }
 
 /* light theme: a softer daytime surface for the chrome while the sphere behind
@@ -47,6 +59,7 @@ body[data-theme='light'] {
   --border: #d8d8de;
   --panel-bg: #ececf0;
   --overlay-bg: #f2f2f5;
+  --danger: #b32626;                /* darker red so it still reads on the light overlay */
 }
 
 /* light-theme legibility fixes for text that is hardcoded light-grey / white in
@@ -95,14 +108,40 @@ body[data-theme='light'] .modal-box .dim { color: var(--text-dim); }
 /* headings / body copy that are hardcoded #fff or light-grey on the light pages */
 body[data-theme='light'] .people-title,
 body[data-theme='light'] #d-title,
-body[data-theme='light'] .room-hero h1,
 body[data-theme='light'] .recap-hero h1,
 body[data-theme='light'] .album-id h2,
 body[data-theme='light'] .profile-id h2,
 body[data-theme='light'] .d-meta,
 body[data-theme='light'] .d-cols p,
-body[data-theme='light'] #room-desc,
 body[data-theme='light'] .modal-box h2 { color: var(--text); }
+
+/* the room hero is NOT a light surface in either theme - it is a cover photo
+   under a dark scrim (or #0f0f0f when there is no cover). repainting its text as
+   dark ink for light mode put dark type on a dark backdrop. it stays light. */
+body[data-theme='light'] .room-hero h1 { color: #fff; }
+body[data-theme='light'] #room-desc { color: #e8e8e8; }
+body[data-theme='light'] #room-welcome { color: #c4c4c4; }
+body[data-theme='light'] .room-hero .mono,
+body[data-theme='light'] .room-hero .dim { color: #cfcfcf; }
+
+/* the room / admin / recap pages switch their page background to the light
+   surface, but their panels were hardcoded near-black, so light mode showed dark
+   slabs floating on a white page. bring the panel surfaces along with the theme. */
+body[data-theme='light'] .room-panel,
+body[data-theme='light'] .admin-panel,
+body[data-theme='light'] .recap-hero,
+body[data-theme='light'] .recap-stat,
+body[data-theme='light'] .room-spotlight,
+body[data-theme='light'] .milestone-badge,
+body[data-theme='light'] .flat-card,
+body[data-theme='light'] .album-card,
+body[data-theme='light'] .person-card,
+body[data-theme='light'] .atlas-card {
+  background: var(--surface-2); border-color: var(--border); color: var(--text);
+}
+body[data-theme='light'] :is(.flat-card, .album-card, .person-card, .atlas-card,
+  .room-spotlight, .milestone-badge) :is(strong, h3, .fc-title, .ac-name, .ms-label) { color: var(--text); }
+body[data-theme='light'] .album-cover { background-color: #e4e4e9; }
 
 /* panel row surfaces on the light pages (activity / admin / picker rows) */
 body[data-theme='light'] .activity-row,
@@ -122,11 +161,35 @@ body[data-theme='light'] select {
 }
 body[data-theme='light'] .search { background: var(--surface-2); }
 
-/* focus rings read as dark on the light surface */
-body[data-theme='light'] button:focus-visible,
-body[data-theme='light'] input:focus-visible,
-body[data-theme='light'] textarea:focus-visible,
-body[data-theme='light'] select:focus-visible { outline-color: #14141a; }
+/* focus rings read as dark on the light surface. scoped to the light chrome:
+   unscoped, this also repainted the focus ring of the HUD that floats over the
+   dark 3D scene, making keyboard focus there invisible. */
+body[data-theme='light'] #settings-panel :is(button, input, select):focus-visible,
+body[data-theme='light'] #filter-panel :is(button, input):focus-visible,
+body[data-theme='light'] #notifications-panel button:focus-visible,
+body[data-theme='light'] .modal-box :is(button, input, textarea, select):focus-visible,
+body[data-theme='light'] :is(#detail, #people, #albums, #flat-view, #atlas, #community-room, #community-admin, #recap-overlay)
+  :is(button, input, textarea, select):focus-visible { outline-color: #14141a; }
+
+/* the settings panel becomes a near-white surface in light mode, but its own
+   header, row labels and tick marks stayed at their dark-theme greys, so
+   DISPLAY SETTINGS / RENDER QUALITY / MAX FPS and the 1x-3x ticks were only just
+   visible on it. the slider handle was #fff on ~#e5e5e7 for the same reason. */
+body[data-theme='light'] #settings-panel .sp-head { color: var(--text); }
+body[data-theme='light'] #settings-panel .sp-label,
+body[data-theme='light'] #settings-panel .sp-label span { color: var(--text); }
+body[data-theme='light'] #settings-panel .sp-ticks,
+body[data-theme='light'] #settings-panel .sp-ticks span { color: #5c5c66; }
+body[data-theme='light'] #settings-panel input[type=range]::-webkit-slider-thumb,
+body[data-theme='light'] #settings-panel input[type=range]::-moz-range-thumb {
+  background: #14141a; border-color: #14141a;
+}
+body[data-theme='light'] #settings-panel input[type=range] { background: #c9c9d2; }
+
+/* modal field labels are hardcoded mid-grey; on the light modal surface they
+   need the dim ink token like every other label there. */
+body[data-theme='light'] .modal-box label,
+body[data-theme='light'] .modal-box .field > span { color: var(--text-dim); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -140,6 +203,10 @@ html, body {
 }
 
 button { font-family: inherit; border: none; background: none; cursor: pointer; }
+/* buttons the app disables mid-flight kept cursor:pointer and still matched
+   :hover, so a disabled control still lifted and brightened under the pointer. */
+button:disabled { cursor: default; opacity: .45; }
+button:disabled:hover { transform: none; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 3px;
@@ -164,7 +231,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     /* faint room-accent wash pooled at the bottom edge - dark + minimal, sits
        behind the dark layers above so it never touches the photos themselves */
     radial-gradient(ellipse 120% 80% at 50% 118%, var(--community-glow) 0%, rgba(0,0,0,0) 60%);
-  transition: background 0.6s ease;
+  /* only the accent wash ever changes, so transition that custom property rather
+     than `background`: transitioning the shorthand repaints a full-viewport stack
+     of four gradients sitting directly over the WebGL canvas. */
+  transition: --community-glow 0.6s ease;
+}
+@property --community-glow {
+  syntax: '<color>'; inherits: true; initial-value: rgba(154,154,154,0.10);
 }
 
 #empty-wall {
@@ -216,8 +289,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   z-index: 10;
   display: flex; align-items: center; gap: 12px;
 }
-#sound { color: #cfcfcf; }
-#sound:hover { color: #fff; }
+/* every other floating HUD control is a bordered pill; this one was bare text,
+   so it read as a stray label rather than a button. */
+#sound {
+  color: #cfcfcf;
+  padding: 8px 15px; border-radius: 999px;
+  border: 1px solid #333; background: rgba(20,20,20,0.82);
+  line-height: 1;
+  transition: border-color .2s, background .2s, color .2s;
+}
+#sound:hover { color: #fff; border-color: #6f6f6f; background: rgba(38,38,38,0.9); }
 
 #sound-wrap input[type="range"] {
   -webkit-appearance: none; appearance: none;
@@ -261,9 +342,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .circle-btn.active { background: #fff; color: #000; }
 
 /* settings button (above the grid button) + panel */
-#settings-btn { position: fixed; bottom: 80px; left: 22px; z-index: 10; }
+/* the gear floated on its own row above the grid/list/post cluster. it belongs
+   on the same rail as its peers - they are all 50px circle buttons. */
+#settings-btn { position: fixed; bottom: 22px; left: 196px; z-index: 10; }
 #settings-panel {
-  position: fixed; bottom: 142px; left: 22px; z-index: 11;
+  position: fixed; bottom: 84px; left: 22px; z-index: 11;
   width: 248px;
   background: var(--surface);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -330,17 +413,21 @@ body[data-theme='light'] #settings-panel .sp-seg button.active { color: var(--su
   will-change: transform, width;
 }
 
+/* an 86px circle was the only control of that size or shape in the app and sat
+   on the same rail as the 50px .circle-btn cluster. matching the pill language
+   of .pill-nav puts the bottom rail into one family. */
 #filter-btn {
   position: fixed; bottom: 22px; right: 22px; z-index: 10;
-  width: 86px; height: 86px; border-radius: 50%;
+  height: 50px; padding: 0 24px; border-radius: 999px;
   background: rgba(26,26,26,0.9);
-  color: #fff; font-size: 15px; font-weight: 500;
-  transition: transform .3s;
+  color: #fff; font-size: 14px; font-weight: 500;
+  border: 1px solid #2a2a2a;
+  transition: transform .2s, border-color .2s, background .2s;
 }
-#filter-btn:hover { transform: scale(1.07); }
+#filter-btn:hover { transform: translateY(-2px); border-color: #4a4a4a; background: rgba(38,38,38,0.95); }
 
 #filter-panel {
-  position: fixed; bottom: 122px; right: 22px; z-index: 11;
+  position: fixed; bottom: 84px; right: 22px; z-index: 11;
   width: 290px;
   background: var(--surface);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -390,10 +477,10 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 .hero-kicker { color: #9a9a9a; letter-spacing: .16em; margin-bottom: 16px; }
 .hero-copy h1, .hub-inner h1, .invite-card h1 {
   color: #fff;
-  font-size: clamp(46px, 9vw, 128px);
+  font-size: var(--fs-entry);
   font-weight: 600;
   letter-spacing: -0.035em;
-  line-height: .94;
+  line-height: 1;
   max-width: 980px;
 }
 .hero-sub {
@@ -444,6 +531,12 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
   position: absolute; inset: 0;
   background: linear-gradient(to bottom, rgba(0,0,0,0.14), rgba(0,0,0,0.84));
 }
+/* a room with no cover yet fell back to a flat empty rectangle. give it a quiet
+   texture so it reads as "no cover set" rather than a card that failed to load. */
+.community-card:not([style*="background-image"]) {
+  background-image:
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 9px);
+}
 .community-card > * { position: relative; }
 .community-card:hover { border-color: #5a5a5a; transform: translateY(-2px); }
 .community-card .cc-name { color: #fff; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
@@ -453,7 +546,8 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
   margin: auto auto auto 8vw;
   padding-top: 96px;
 }
-.invite-card h1 { font-size: clamp(42px, 7vw, 96px); }
+/* the invite card is a narrow padded box, so it takes the entry step already set
+   by the shared rule above rather than declaring a fourth headline size. */
 .entry-mode .view-toggles,
 .entry-mode .pill-nav,
 .entry-mode #filter-btn,
@@ -478,10 +572,12 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
   display: none;
   overflow-y: auto;
 }
-.detail-inner { max-width: 1420px; margin: 0 auto; padding: 0 36px 60px; }
+.detail-inner { max-width: 1420px; margin: 0 auto; padding: 24px 36px 132px; }
+/* the top row is the first line of the page, not chrome stuck to the window edge.
+   the 24px block padding above now matches the 36px side inset of the same column. */
 .detail-top {
   display: flex; justify-content: space-between; align-items: center;
-  padding-top: 28px;
+  padding-top: 12px;
 }
 #back-btn { color: #cfcfcf; font-size: 12px; padding: 10px 0; }
 #back-btn:hover { color: #fff; }
@@ -496,11 +592,13 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 }
 .d-nav button:hover { color: #fff; border-color: #4a4a4a; background: rgba(38,38,38,0.6); }
 
+/* this is a photo page: the title introduces the photograph, it does not replace
+   it. the old 7vh top margin plus a 132px headline pushed the image past the fold. */
 #d-title {
-  font-size: clamp(54px, 9.2vw, 158px);
-  font-weight: 600; letter-spacing: -0.035em; line-height: 0.96;
+  font-size: var(--fs-page);
+  font-weight: 600; letter-spacing: -0.03em; line-height: 1.02;
   text-transform: uppercase; color: #fff;
-  margin: 7vh 0 38px;
+  margin: 26px 0 26px;
   overflow: hidden;
 }
 #d-title span { display: block; will-change: transform; }
@@ -510,7 +608,9 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
   border-top: 1px solid #1f1f1f; padding-top: 18px;
   color: #d2d2d2;
 }
-.d-meta .lbl { display: block; color: #616161; margin-bottom: 7px; }
+/* CLIENT / YEAR / SCOPE / PLACE field labels: #616161 measured 3.29:1, the worst
+   contrast in the app. */
+.d-meta .lbl { display: block; color: #8d8d8d; margin-bottom: 7px; }
 #d-place-row { grid-column: 1 / -1; }
 .place-chip {
   display: inline-flex; align-items: center; gap: 7px;
@@ -540,9 +640,14 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 .place-result + .place-result { border-top: 1px solid #1c1c1c; }
 .place-result:hover, .place-result:focus-visible { background: #1a1a1a; color: #fff; outline: none; }
 
+/* the stage used to run the full 1350px column, so a portrait phone photo sat in
+   ~520px of dead black on each side. bounding it reads as a mat around the print
+   instead of a void, and landscape shots still get plenty of room. */
 .d-hero {
   position: relative;
-  margin: 44px 0; height: 64vh; overflow: hidden; background: #0d0d0d;
+  margin: 28px auto; max-width: 1000px;
+  height: min(62vh, 620px); overflow: hidden; background: #0d0d0d;
+  border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   touch-action: pan-y;
 }
@@ -755,7 +860,7 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 .c-like.on .heart { color: #e0506a; }
 .c-like.on .c-like-count { color: #d8d8d8; }
 .c-del { margin-left: auto; color: #5d5d5d; font-size: 11px; }
-.c-del:hover { color: #e05a5a; }
+.c-del:hover { color: var(--danger); }
 .c-text { color: #c9c9c9; font-size: 15px; line-height: 1.55; margin-top: 3px; word-wrap: break-word; }
 .c-text .mention {
   color: #fff; font: inherit; font-weight: 600;
@@ -819,7 +924,7 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 }
 .reply-chip:hover { border-color: #3a3a3a; }
 .reply-chip .rc-x { color: #6a6a6a; font-size: 12px; transition: color .2s; }
-.reply-chip:hover .rc-x { color: #e05a5a; }
+.reply-chip:hover .rc-x { color: var(--danger); }
 
 .d-comment-form { position: relative; display: flex; gap: 10px; align-items: stretch; margin-top: 10px; }
 .d-comment-form input { margin-top: 0; }
@@ -853,8 +958,11 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 #loader-text { font-size: 12px; letter-spacing: 0.25em; color: #a8a8a8; }
 
 /* ---------- shared form bits ---------- */
-.err { color: #e05a5a; min-height: 14px; }
-.dim { color: #6f6f6f; }
+.err { color: var(--danger); min-height: 14px; }
+/* #6f6f6f measured 4.06:1 on the overlay background - under the 4.5:1 AA floor,
+   and this is the colour of nearly every mono label in the app (panel headings,
+   card meta, empty states). #8d8d8d measures 6.14:1 and still reads as dim. */
+.dim { color: #8d8d8d; }
 .pill-white {
   background: #fff; color: #000;
   font-size: 15px; font-weight: 500;
@@ -873,6 +981,25 @@ input, textarea, select {
 }
 input:focus, textarea:focus, select:focus { border-color: #6a6a6a; }
 textarea { resize: vertical; }
+
+/* a colour input inherits the rule above, and 11px of vertical padding on a
+   control whose content box IS the swatch left a ~2px hairline that read as a
+   broken field rather than a colour picker. give it a real swatch. */
+input[type=color] {
+  width: 56px; height: 40px; padding: 4px; cursor: pointer;
+  background: #111; border: 1px solid #2e2e2e; border-radius: 8px;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: none; border-radius: 5px; }
+input[type=color]::-moz-color-swatch { border: none; border-radius: 5px; }
+/* accent + cover sit on one row. the accent label is a <label> wrapping its own
+   text and the swatch, so it has to stack rather than run them inline, and the
+   cover picker should size to its text instead of eating the rest of the row. */
+#community-settings-form .pe-row { align-items: flex-end; gap: 14px; }
+#community-settings-form .pe-row label[for=cs-cover] { flex: none; width: auto; padding: 12px 18px; }
+#community-settings-form label:has(#cs-accent) {
+  flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 0;
+}
 
 /* ---------- auth gate ---------- */
 #auth {
@@ -901,8 +1028,15 @@ textarea { resize: vertical; }
   position: fixed; top: 22px; right: 22px; z-index: 10;
   display: flex; align-items: center; gap: 12px;
 }
-#me-chip { color: #cfcfcf; }
-#me-chip:hover { color: #fff; }
+/* the username was bare text pressed against the viewport edge next to a
+   circular bell. give it the same pill chrome as its neighbours. */
+#me-chip {
+  color: #cfcfcf; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; padding: 8px 15px; border-radius: 999px;
+  border: 1px solid #333; background: rgba(20,20,20,0.82); line-height: 1;
+  transition: border-color .2s, background .2s, color .2s;
+}
+#me-chip:hover { color: #fff; border-color: #6f6f6f; background: rgba(38,38,38,0.9); }
 /* HUD chip row: one flex container so chips pack and adapt to label length
    instead of each carrying a hand-tuned left offset that drifts when a label
    or the community name changes. */
@@ -1031,7 +1165,15 @@ textarea { resize: vertical; }
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 18px;
   padding: 22px;
+  /* the OS scrollbar renders as a chunky light bar on this near-black surface */
+  scrollbar-width: thin; scrollbar-color: #3a3a3a transparent;
 }
+.modal-box::-webkit-scrollbar { width: 8px; }
+.modal-box::-webkit-scrollbar-track { background: transparent; }
+.modal-box::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
+.modal-box::-webkit-scrollbar-thumb:hover { background: #555; }
+body[data-theme='light'] .modal-box { scrollbar-color: #b6b6be transparent; }
+body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6be; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-dim); margin-bottom: 16px; }
 .modal-head button { color: var(--text); font-size: 14px; }
 #drop-zone {
@@ -1041,6 +1183,12 @@ textarea { resize: vertical; }
   transition: border-color .2s, color .2s;
 }
 #drop-zone:hover { border-color: #888; color: #fff; }
+/* once a photo is chosen the preview is the subject and the picker is a
+   secondary action - it does not need to stay a 92px empty target. */
+#upload-modal:has(#upload-preview:not([hidden])) #drop-zone { height: 44px; font-size: 11px; }
+/* keep the submit button reachable: the modal scrolls at 90dvh and "Post It"
+   was the last child, so on a short window it sat below the fold. */
+#upload-submit { position: sticky; bottom: 0; z-index: 1; }
 #upload-preview {
   width: 100%; height: 180px; object-fit: cover;
   border-radius: 10px; margin-bottom: 14px; display: block;
@@ -1048,6 +1196,9 @@ textarea { resize: vertical; }
 .upload-batch {
   display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px;
 }
+/* an empty flex container still contributes its margin, so before a photo is
+   chosen this left a dead 12px band between the modal head and the picker. */
+.upload-batch:empty { display: none; }
 .upload-batch span {
   max-width: 100%;
   color: #cfcfcf;
@@ -1110,12 +1261,17 @@ textarea { resize: vertical; }
   display: none;
   overflow-y: auto;
 }
-.people-inner { max-width: 1420px; margin: 0 auto; padding: 0 36px 60px; }
+/* bottom padding must clear the fixed .pill-nav (it occupies the last ~80px of
+   the viewport). at 60px the last row of a profile's photo grid rendered behind
+   the nav instead of above it. */
+.people-inner { max-width: 1420px; margin: 0 auto; padding: 24px 36px 132px; }
+/* PEOPLE / ALBUMS / PLACES / GALLERY / SAVED are one-word signposts, not hero
+   copy - they were set at the same size as the landing headline. */
 .people-title {
-  font-size: clamp(54px, 9.2vw, 158px);
-  font-weight: 600; letter-spacing: -0.035em; line-height: 0.96;
+  font-size: var(--fs-page);
+  font-weight: 600; letter-spacing: -0.03em; line-height: 1.02;
   text-transform: uppercase; color: #fff;
-  margin: 6vh 0 30px;
+  margin: 26px 0 24px;
 }
 .search {
   max-width: 520px;
@@ -1174,7 +1330,7 @@ textarea { resize: vertical; }
 }
 .pe-pick:hover { border-color: #777; }
 .pe-clear { color: #8d8d8d; text-decoration: underline; text-underline-offset: 3px; }
-.pe-clear:hover { color: #e05a5a; }
+.pe-clear:hover { color: var(--danger); }
 
 #profile-view { padding-top: 10px; }
 #profile-back { color: #9a9a9a; margin: 18px 0 26px; }
@@ -1194,7 +1350,7 @@ textarea { resize: vertical; }
 .pe-row { display: flex; gap: 14px; align-items: center; }
 .pe-row label { flex: 1; }
 .pe-danger-row { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(224, 90, 90, 0.25); }
-#pe-delete-account { color: #e05a5a; }
+#pe-delete-account { color: var(--danger); }
 #pe-delete-account:hover { text-decoration: underline; text-underline-offset: 3px; }
 #pe-cancel { color: #9a9a9a; text-decoration: underline; text-underline-offset: 4px; }
 .photos-label { margin: 44px 0 16px; letter-spacing: .12em; }
@@ -1218,7 +1374,7 @@ textarea { resize: vertical; }
 #profile-new-album:hover { color: #fff; }
 
 .album-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
 }
 .album-card {
   text-align: left; cursor: pointer;
@@ -1226,10 +1382,13 @@ textarea { resize: vertical; }
   transition: border-color .2s, transform .2s;
 }
 .album-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
+/* a fixed 150px cover became a letterbox strip as soon as the card got wider;
+   an aspect-ratio keeps the proportion at any column width. */
 .album-cover {
-  height: 150px; background: #161616 center/cover no-repeat;
+  aspect-ratio: 4 / 3; background: #161616 center/cover no-repeat;
   display: flex; align-items: center; justify-content: center;
   color: #4a4a4a; font-family: 'Space Mono', monospace; font-size: 11px;
+  letter-spacing: .14em;
 }
 .album-card .ac-body { padding: 13px 15px; }
 .album-card .ac-name { color: #fff; font-weight: 500; font-size: 15px; }
@@ -1244,7 +1403,7 @@ textarea { resize: vertical; }
 .album-actions { margin-left: auto; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .album-actions button { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
 .album-actions button:hover { color: #fff; }
-.album-actions button.danger:hover { color: #e05a5a; }
+.album-actions button.danger:hover { color: var(--danger); }
 #album-contact-sheet:disabled { opacity: .5; cursor: default; }
 #album-sheet-building { animation: recapPulse 1.1s ease-in-out infinite; }
 #album-edit-form { max-width: 560px; margin-top: 22px; }
@@ -1312,8 +1471,11 @@ textarea { resize: vertical; }
 .share-btn:hover { color: #fff; }
 .dl-btn { margin-left: -4px; }
 /* "FIND ON SPHERE" - spin the sphere to this photo from the detail bar */
-.locate-btn { display: inline-flex; align-items: center; transition: color .2s, letter-spacing .2s; }
-.locate-btn:hover { color: #fff; letter-spacing: .04em; }
+/* animating letter-spacing changes the button's width every frame, which reflows
+   the whole flex row it sits in (and can re-wrap its neighbours). colour alone
+   gives the same read for none of the layout cost. */
+.locate-btn { display: inline-flex; align-items: center; transition: color .2s; }
+.locate-btn:hover { color: #fff; }
 
 /* slideshow play/pause toggle + progress ring (detail action row) */
 .play-btn {
@@ -1341,8 +1503,8 @@ textarea { resize: vertical; }
 #profile-share:hover, #album-share:hover { color: #fff; }
 
 /* CINEMA button in the detail action row */
-.cinema-btn { display: inline-flex; align-items: center; transition: color .2s, letter-spacing .2s; }
-.cinema-btn:hover { color: #fff; letter-spacing: .04em; }
+.cinema-btn { display: inline-flex; align-items: center; transition: color .2s; }
+.cinema-btn:hover { color: #fff; }
 
 /* ---------- cinema mode (immersive fullscreen viewer) ---------- */
 #cinema-layer {
@@ -1447,15 +1609,20 @@ textarea { resize: vertical; }
 .flat-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 24px; }
 .flat-bar .search { flex: 1; min-width: 200px; max-width: 520px; margin: 0; }
 .flat-bar select { width: auto; flex: none; background: #0e0e0e; border: 1px solid #2c2c2c; border-radius: 999px; padding: 14px 22px; cursor: pointer; }
-.flat-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.flat-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .flat-card { text-align: left; cursor: pointer; background: #0d0d0d; border: 1px solid #1f1f1f; border-radius: 12px; overflow: hidden; transition: border-color .2s, transform .2s; }
 .flat-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
 .flat-card .fc-media { position: relative; display: block; }
 .flat-card .fc-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; background: #111; }
 .flat-card .fc-body { display: block; padding: 11px 13px; }
 .flat-card .fc-title { color: #fff; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.flat-card .fc-sub { margin-top: 4px; display: flex; gap: 12px; align-items: center; }
-.fc-counts { margin-left: auto; display: flex; gap: 10px; color: #8d8d8d; }
+/* the meta row must never wrap: without nowrap a long @username squeezes the
+   count items below their content width, so "2 COMMENTS" breaks onto a second
+   line and that one card grows taller than its neighbours in the same row. */
+.flat-card .fc-sub { margin-top: 4px; display: flex; gap: 12px; align-items: center; min-width: 0; }
+.flat-card .fc-sub > * { white-space: nowrap; }
+.flat-card .fc-sub .fc-user { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fc-counts { margin-left: auto; display: flex; gap: 10px; color: #8d8d8d; flex: none; }
 
 /* list mode */
 .flat-grid.list { grid-template-columns: 1fr; gap: 8px; max-width: 900px; }
@@ -1471,10 +1638,14 @@ textarea { resize: vertical; }
   position: fixed; inset: 0; z-index: 60;
   background: var(--overlay-bg); display: none; overflow-y: auto;
 }
-#atlas-sub { letter-spacing: .14em; font-size: 12px; margin: -18px 0 26px; }
+/* was margin-top: -18px to claw back the old .people-title bottom margin, which
+   silently coupled it to a value declared 600 lines away. */
+#atlas-sub { letter-spacing: .14em; font-size: 12px; margin: 0 0 8px; }
 /* atlas globe - a centered hero that sits above the places grid */
-.atlas-globe { position: relative; max-width: 640px; margin: 56px auto 48px; }
-.atlas-globe-canvas { width: 100%; height: 440px; max-height: 56vh; }
+/* the globe is an establishing shot, not the page. at 440px tall (plus 104px of
+   margin) it pushed every place card below the fold on a 900px window. */
+.atlas-globe { position: relative; max-width: 520px; margin: 20px auto 32px; }
+.atlas-globe-canvas { width: 100%; height: 300px; max-height: 34vh; }
 /* fill the container exactly at any device-pixel-ratio: setSize(w,h,false) leaves
    the canvas with no CSS size, so without this it renders at its raw buffer size
    (w * dpr) and overflows down onto the posts on hi-dpi/scaled displays. */
@@ -1544,8 +1715,8 @@ textarea { resize: vertical; }
 }
 .room-top-actions button:hover, #admin-close:hover, #room-close:hover, #room-switch:hover, #room-admin-open:hover { color: #fff; }
 .room-hero {
-  min-height: 320px;
-  margin: 40px 0 22px;
+  min-height: 260px;
+  margin: 20px 0 22px;
   border: 1px solid #1f1f1f;
   border-radius: 16px;
   padding: 28px;
@@ -1559,10 +1730,10 @@ textarea { resize: vertical; }
 }
 .room-hero h1 {
   color: #fff;
-  font-size: clamp(44px, 8vw, 116px);
+  font-size: var(--fs-hero);
   font-weight: 600;
   letter-spacing: -0.035em;
-  line-height: .94;
+  line-height: .96;
   text-transform: uppercase;
 }
 .room-hero p { max-width: 720px; }
@@ -1604,15 +1775,18 @@ textarea { resize: vertical; }
   transition: border-color .2s, transform .2s;
 }
 .room-spotlight:hover { border-color: #4a4a4a; transform: translateY(-1px); }
+/* without an aspect-ratio the media column takes the intrinsic height of the
+   photo scaled to its width, so one portrait phone shot drove the whole card to
+   640px tall and stretched the meta column into 878x640 of empty space. */
 .room-spotlight-media {
-  position: relative; flex: none; width: 42%; max-width: 360px; min-height: 180px;
+  position: relative; flex: none; width: 42%; max-width: 360px;
+  aspect-ratio: 3 / 2; min-height: 0;
 }
 .room-spotlight-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .room-spotlight-meta {
   display: flex; flex-direction: column; justify-content: center; gap: 8px;
   padding: 18px 20px; min-width: 0;
 }
-.room-spotlight-kicker { letter-spacing: .22em; }
 .room-spotlight-meta h3 {
   color: #fff; font-size: clamp(22px, 3.4vw, 40px); font-weight: 600;
   letter-spacing: -0.025em; line-height: 1.04; text-transform: uppercase;
@@ -1638,10 +1812,10 @@ textarea { resize: vertical; }
 }
 .recap-hero h1 {
   color: #fff;
-  font-size: clamp(40px, 7vw, 96px);
+  font-size: var(--fs-entry);
   font-weight: 600;
   letter-spacing: -0.035em;
-  line-height: .94;
+  line-height: 1;
   text-transform: uppercase;
   margin: 10px 0;
 }
@@ -1653,10 +1827,10 @@ textarea { resize: vertical; }
 }
 .recap-actions .share-btn {
   display: inline-flex; align-items: center;
-  transition: color .2s, letter-spacing .2s;
+  transition: color .2s;
 }
-.recap-actions .share-btn:hover { color: #fff; letter-spacing: .04em; }
-.recap-actions .share-btn:disabled { opacity: .5; cursor: default; letter-spacing: normal; }
+.recap-actions .share-btn:hover { color: #fff; }
+.recap-actions .share-btn:disabled { opacity: .5; cursor: default; }
 #recap-building {
   display: inline-flex; align-items: center;
   animation: recapPulse 1.1s ease-in-out infinite;
@@ -1699,10 +1873,8 @@ textarea { resize: vertical; }
   padding: 7px 12px; border-radius: 999px;
   background: #141414; border: 1px solid #242424;
 }
-.pulse-chip.zero { opacity: .5; }
 .pulse-chip .pc-emoji { font-size: 16px; filter: grayscale(0.35); }
 .pulse-chip .pc-count { font-size: 13px; color: #d8d8d8; }
-.pulse-chip.zero .pc-count { color: #8a8a8a; }
 .pulse-strip:empty { display: none; }
 
 /* ---- community milestones (shared momentum badges) ---- */
@@ -1775,7 +1947,15 @@ textarea { resize: vertical; }
   color: #cfcfcf; text-decoration: underline; text-underline-offset: 3px; min-height: 34px;
 }
 .admin-actions button:hover { color: #fff; }
-.admin-actions button.danger:hover, .danger:hover { color: #e05a5a; }
+/* a destructive control has to look destructive BEFORE the pointer is on it.
+   these were previously indistinguishable from their neighbours at rest, so
+   DELETE PHOTO read exactly like ADD TO ALBUM until you hovered it. */
+.danger, .admin-actions button.danger, #d-owner button.danger,
+.album-actions button.danger, #pe-delete-account { color: var(--danger); }
+.danger:hover, .admin-actions button.danger:hover, #d-owner button.danger:hover,
+.album-actions button.danger:hover, #pe-delete-account:hover {
+  color: var(--danger); text-decoration-thickness: 2px;
+}
 .inline-form { display: flex; gap: 8px; align-items: flex-end; }
 .inline-form input { margin: 0; }
 .inline-form .pill-white { width: auto; flex: none; padding: 11px 18px; }
@@ -1815,7 +1995,7 @@ textarea { resize: vertical; }
 #d-owner { display: flex; gap: 24px; margin-top: 18px; }
 #d-owner button { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
 #d-owner button:hover { color: #fff; }
-#d-owner button.danger:hover { color: #e05a5a; }
+#d-owner button.danger:hover { color: var(--danger); }
 #d-edit-form { max-width: 720px; margin-top: 22px; }
 #d-edit-form label { display: block; color: #9a9a9a; margin-bottom: 12px; }
 
@@ -1888,7 +2068,8 @@ textarea { resize: vertical; }
   #sound-wrap { display: none; }
   .entry-top { left: 18px; right: 18px; top: 16px; }
   .hero-copy, .invite-card { width: calc(100vw - 36px); margin: auto 18px 12vh; }
-  .hero-copy h1, .hub-inner h1, .invite-card h1 { font-size: clamp(40px, 14vw, 68px); }
+  /* the shared scale already resolves to ~34-44px here; overriding it upward is
+     what produced a size jump across the breakpoint. */
   .hub-inner { width: calc(100vw - 36px); margin-top: 92px; }
   .hero-actions .pill-white, .hero-actions .ghost-pill, .hub-actions .pill-white, .hub-actions .ghost-pill {
     width: 100%;
@@ -1912,7 +2093,7 @@ textarea { resize: vertical; }
   #back-btn { font-size: 13px; padding: 6px 0; }
   .d-nav button, #d-client-top { font-size: 11px; }
   #d-client-top { flex-basis: 100%; text-align: left; }
-  #d-title { font-size: clamp(38px, 11vw, 64px); }
+  #d-title { margin: 18px 0 20px; }
   .room-grid, .admin-grid { grid-template-columns: 1fr; }
   .recap-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .recap-actions { gap: 14px 18px; }
@@ -1972,19 +2153,33 @@ textarea { resize: vertical; }
    as intentional quiet rather than a broken or half-loaded view. */
 /* no display override here: the global [hidden] { display:none !important }
    rule keeps these toggling correctly, so we only restyle the visible note. */
+/* these were a single dim sentence adrift in an otherwise empty page. giving
+   them the same bordered surface the real content uses makes an empty grid read
+   as a deliberate placeholder holding the space its cards will occupy. */
 #flat-empty,
 #atlas-empty,
 #albums-empty,
 #profile-no-photos,
 #profile-no-albums,
+#people-empty,
+#community-empty,
+#recap-photos-empty,
 #recap-members-empty {
-  color: #6f6f6f;
+  color: #8d8d8d;
   font-size: 12px;
   line-height: 1.7;
   letter-spacing: .18em;
-  padding: 46px 4px;
-  max-width: 640px;
+  padding: 44px 28px;
+  max-width: none;
   text-transform: uppercase;
+  text-align: center;
+  border: 1px dashed #242424;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.012);
+}
+body[data-theme='light'] :is(#flat-empty, #atlas-empty, #albums-empty, #profile-no-photos,
+  #profile-no-albums, #people-empty, #community-empty, #recap-photos-empty, #recap-members-empty) {
+  border-color: var(--border); background: rgba(0,0,0,0.02);
 }
 
 /* ---------- unified hover-lift + press micro-interactions ---------- */
@@ -2428,6 +2623,15 @@ html, body {
 }
 #auth .auth-tabs button.active { color: #fff; }
 #auth .auth-title { letter-spacing: 0.14em; }
-/* keep the HOME button clear of the hairline frame (inset 22px) instead of jammed against it */
-#auth .entry-top { top: 42px; left: 44px; right: 44px; }
-@media (max-width: 760px) { #auth .entry-top { top: 34px; left: 32px; right: 32px; } }
+/* keep the top bar clear of the hairline frame (inset 22px) instead of jammed
+   against it. the auth screen already had this; the hub and invite screens are
+   the same family and were still at the default 22px/24px, so their HOME / LOG
+   OUT links sat on the frame line and out of step with the content column. */
+#auth .entry-top,
+#community-hub .entry-top,
+#invite-view .entry-top { top: 42px; left: 44px; right: 44px; }
+@media (max-width: 760px) {
+  #auth .entry-top,
+  #community-hub .entry-top,
+  #invite-view .entry-top { top: 34px; left: 32px; right: 32px; }
+}

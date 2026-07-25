@@ -13,7 +13,7 @@
    toBlob(). All text is app-generated / trusted and drawn to the canvas (never
    innerHTML). Returns the canvas; the caller handles toBlob + download / share. */
 
-import { drawShareBackdrop, fitHeadingFont } from './util.js';
+import { drawShareBackdrop, fitHeadingFont, clipText } from './util.js';
 
 const MAX_CELLS = 100;   // hard cap on tiled covers; the rest roll into '+K MORE'
 
@@ -41,8 +41,10 @@ export async function renderMosaicPoster(community, posts, helpers) {
 
   const name = String((community && community.name) || 'OUR SPHERE').toUpperCase();
   x.fillStyle = '#ffffff';
+  // fitHeadingFont stops shrinking at its 44px floor, so a very long community
+  // name still runs off the card edge - clip whatever is left over at that size.
   fitHeadingFont(x, name, W - pad * 2, 92, 44);
-  x.fillText(name, pad, pad + 108);
+  x.fillText(clipText(x, name, W - pad * 2), pad, pad + 108);
 
   const total = posts.length;
   const members = (community && community.memberCount) || 0;

@@ -4,6 +4,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Chicken Butt Gallery</title>
+<!-- the chicken mark inline, so the tab icon needs no asset file and no /favicon.ico route -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230a0a0a'/%3E%3Cg%20fill='%23fff'%20transform='translate(0%206)'%3E%3Cpath%20d='M17%2031%20C7%2027%203%2019%205%2010%20C9%2016%2013%2018%2016%2019%20C12%2013%2012%207%2016%203%20C19%209%2022%2013%2026%2015%20Z'/%3E%3Cpath%20d='M14%2036%20C14%2025%2023%2018%2033%2018%20L44%2018%20C49%2018%2053%2022%2053%2027%20C53%2040%2043%2051%2031%2051%20C21%2051%2014%2045%2014%2036%20Z'/%3E%3Cpath%20d='M37%2011%20L53%2020%20L40%2029%20Z'/%3E%3Ccircle%20cx='46'%20cy='14'%20r='8'/%3E%3Cpath%20d='M40%208%20C38%203%2042%200%2044%203%20C45%20-1%2049%20-1%2049%203%20C52%201%2054%204%2052%208%20Z'/%3E%3Cpath%20d='M54%2011%20L62%2014.5%20L54%2018%20Z'/%3E%3Cpath%20d='M50%2020%20C53%2024%2051%2028%2049%2028%20C47%2028%2046%2023%2048%2020%20Z'/%3E%3C/g%3E%3Ccircle%20cx='48.5'%20cy='18.5'%20r='1.7'%20fill='%230a0a0a'/%3E%3C/svg%3E"/>
 <link rel="stylesheet" href="styles.css"/>
 <script src="js/vendor/gsap.min.js"></script>
 </head>
@@ -297,7 +299,7 @@
         <span class="mono dim" id="d-comment-count">0 COMMENTS</span>
         <button id="d-locate" class="mono share-btn locate-btn" title="Spin the sphere to this photo">FIND ON SPHERE&nbsp;&#9678;</button>
         <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
-        <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8615;</button>
+        <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8595;</button>
         <button id="d-cinema" class="mono share-btn cinema-btn" title="Cinema mode (F)">CINEMA&nbsp;&#9634;</button>
         <button id="d-play" class="mono play-btn" aria-pressed="false" title="Play slideshow" hidden>
           <span class="play-ring" aria-hidden="true">
@@ -377,7 +379,6 @@
   <div class="people-inner">
     <div class="detail-top">
       <button id="people-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
-      <span class="mono dim">COMMUNITY</span>
     </div>
 
     <div id="people-list">
@@ -462,7 +463,6 @@
   <div class="people-inner">
     <div class="detail-top">
       <button id="albums-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
-      <span class="mono dim">COLLECTIONS</span>
     </div>
 
     <div id="albums-list">
@@ -484,7 +484,7 @@
         </div>
         <div class="album-actions">
           <button id="album-share" class="mono">SHARE</button>
-          <button id="album-contact-sheet" class="mono">SAVE AS SHEET&nbsp;&#8615;</button>
+          <button id="album-contact-sheet" class="mono">SAVE AS SHEET&nbsp;&#8595;</button>
           <span id="album-sheet-building" class="mono dim" hidden>BUILDING SHEET&hellip;</span>
           <span id="album-actions" hidden>
             <button id="album-edit-btn" class="mono">EDIT</button>
@@ -542,7 +542,6 @@
   <div class="people-inner">
     <div class="detail-top">
       <button id="atlas-close" class="mono">&larr;&nbsp; BACK TO SPHERE</button>
-      <span class="mono dim">ATLAS</span>
     </div>
     <h1 class="people-title">PLACES</h1>
     <p id="atlas-sub" class="mono dim" hidden></p>
@@ -580,7 +579,6 @@
       <div class="room-spotlight" id="room-spotlight-card">
         <div class="room-spotlight-media" id="room-spotlight-media"></div>
         <div class="room-spotlight-meta">
-          <span class="mono dim room-spotlight-kicker">SPOTLIGHT</span>
           <h3 id="room-spotlight-title"></h3>
           <p class="mono dim" id="room-spotlight-owner"></p>
         </div>
@@ -627,7 +625,6 @@
   <div class="people-inner">
     <div class="detail-top">
       <button id="recap-close" class="mono">&larr;&nbsp; BACK TO GALLERY</button>
-      <span class="mono dim">SHARED RECAP</span>
     </div>
     <div class="recap-hero">
       <p class="mono dim" id="recap-range"></p>
@@ -635,7 +632,7 @@
       <p class="mono dim" id="recap-sub"></p>
     </div>
     <div class="recap-actions">
-      <button id="recap-download" class="mono share-btn" type="button">SAVE AS CARD&nbsp;&#8615;</button>
+      <button id="recap-download" class="mono share-btn" type="button">SAVE AS CARD&nbsp;&#8595;</button>
       <button id="recap-share" class="mono share-btn" type="button">SHARE RECAP&nbsp;&#8599;</button>
       <span id="recap-building" class="mono dim" hidden>BUILDING CARD&hellip;</span>
     </div>
@@ -658,7 +655,6 @@
   <div class="people-inner">
     <div class="detail-top">
       <button id="admin-close" class="mono">&larr;&nbsp; BACK TO ROOM</button>
-      <span class="mono dim">OWNER / ADMIN</span>
     </div>
     <h1 class="people-title" id="admin-title">ADMIN</h1>
     <div class="admin-grid">
@@ -792,11 +788,12 @@
 <div id="upload-modal" hidden>
   <div class="modal-box">
     <div class="modal-head mono">POST A PHOTO <button id="upload-close" aria-label="Close">&#10005;</button></div>
+    <!-- the chosen photo leads; the picker sits under it as a secondary control -->
+    <img id="upload-preview" alt="" hidden>
+    <div id="upload-batch" class="upload-batch"></div>
     <label id="drop-zone" class="mono" for="upload-file">CLICK TO CHOOSE A PHOTO
       <input id="upload-file" type="file" accept="image/*" multiple hidden>
     </label>
-    <img id="upload-preview" alt="" hidden>
-    <div id="upload-batch" class="upload-batch"></div>
     <label class="mono">TITLE<input id="upload-title" maxlength="40" placeholder="UNTITLED"></label>
     <label class="mono">PLACE<input id="upload-place" maxlength="80" placeholder="SEARCH A PLACE (CITY, REGION)&hellip;"></label>
     <div class="pe-row">

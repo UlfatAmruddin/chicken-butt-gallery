@@ -1270,6 +1270,14 @@ function showDetail() {
     return;
   }
   detail.scrollTop = 0;
+  // reduced motion: no slide-up, no title reveal, no clip wipe - clear whatever
+  // the last open/close tween parked on these nodes so they land on the finished
+  // state in one frame, same clearProps trick as the slideshow branch above.
+  if (reduceMotion) {
+    gsap.set([detail, '#d-title span', '.d-meta', '.d-cols', '.d-hero'],
+      { clearProps: 'opacity,transform,clipPath' });
+    return;
+  }
   gsap.fromTo(detail, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.85, ease: 'power4.inOut' });
   gsap.fromTo('#d-title span', { yPercent: 110 }, { yPercent: 0, duration: 0.9, delay: 0.45, ease: 'power3.out' });
   gsap.fromTo('.d-meta, .d-cols', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.6, stagger: 0.1, ease: 'power2.out' });
@@ -1288,7 +1296,7 @@ function closeProject() {
   if (detailProject && detailProject.postId) clearRouteIf(photoRoute(detailProject.postId));
   detail.setAttribute('aria-hidden', 'true');
   gsap.to(detail, {
-    yPercent: 100, duration: 0.7, ease: 'power3.inOut',
+    yPercent: 100, duration: reduceMotion ? 0 : 0.7, ease: 'power3.inOut',
     onComplete: () => { detail.style.display = 'none'; },
   });
   // opened from an overlay (album / flat grid / deep link): no sphere restore
@@ -2366,7 +2374,7 @@ function renderFlatView() {
       `</span>` +
       `<span class="fc-body">` +
       `<span class="fc-title">${esc(p.title)}</span>` +
-      `<span class="mono dim fc-sub">@${esc(p.username || 'unknown')} <span class="fc-counts"><span>${likes} LIKE${likes === 1 ? '' : 'S'}</span><span>${comments} COMMENT${comments === 1 ? '' : 'S'}</span></span></span>` +
+      `<span class="mono dim fc-sub"><span class="fc-user">@${esc(p.username || 'unknown')}</span> <span class="fc-counts"><span>${likes} LIKE${likes === 1 ? '' : 'S'}</span><span>${comments} COMMENT${comments === 1 ? '' : 'S'}</span></span></span>` +
       `</span>`;
     card.addEventListener('click', () => openDetailFor(p));
     wireLocatePin(card, p.postId);
@@ -3302,7 +3310,9 @@ function closeCommunityRoom() {
 function renderCommunityRoom() {
   if (!currentCommunity) return;
   const cover = document.getElementById('room-cover');
-  cover.style.backgroundImage = currentCommunity.coverFile ? `linear-gradient(to bottom, rgba(0,0,0,.18), rgba(0,0,0,.82)), url('${esc(mediaSrc(currentCommunity.coverFile))}')` : '';
+  // the scrim has to start dark enough to carry the role line, which sits high in
+  // the box: at .18 it was unreadable grey-on-photo whenever the cover was bright.
+  cover.style.backgroundImage = currentCommunity.coverFile ? `linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,.45) 32%, rgba(0,0,0,.88)), url('${esc(mediaSrc(currentCommunity.coverFile))}')` : '';
   document.getElementById('room-accent').style.background = currentCommunity.accent || '#fff';
   document.getElementById('room-title').textContent = currentCommunity.name;
   document.getElementById('room-desc').textContent = currentCommunity.description || '';
@@ -3327,7 +3337,7 @@ function renderCommunityRoom() {
       `<img src="${esc(mediaSrc(post.file))}" alt="${esc(post.title || '')}">` +
       (onSphere ? LOCATE_PIN_HTML : '') +
       `</span>` +
-      `<span>${esc(post.title || 'UNTITLED')}</span>`;
+      `<span>${esc(tileTitle(post.title))}</span>`;
     tile.addEventListener('click', () => openDetailFor(postToProject(post)));
     wireLocatePin(tile, post.id);
     pinnedWrap.appendChild(tile);
@@ -3387,6 +3397,13 @@ function renderCommunitySpotlight() {
   wireLocatePin(card, post.id);
 }
 
+/* titles are typed in whatever case the poster felt like, so a strip ends up
+   mixing "ulfat at the lakefront" with "FIRST YEAR PLAYING". every other title
+   surface (detail page, spotlight) is uppercased in CSS and the strips sit right
+   under mono uppercase kickers - the tiles have no such rule, so flatten here.
+   shared by the pinned strip and the pulse/recap tiles so they cannot drift. */
+function tileTitle(title) { return (title || 'UNTITLED').toUpperCase(); }
+
 /* build one "doorway back to the sphere" photo tile shared by the recap and
    pulse strips: cover image, a locate-pin when the card is on the sphere, the
    title, and a mono sub-label (e.g. "@user / N LOVE"). onClick opens the photo. */
@@ -3399,7 +3416,7 @@ function photoTile(tp, subLabel, onClick) {
     `<img src="${esc(mediaSrc(tp.file))}" alt="${esc(tp.title || '')}">` +
     (onSphere ? LOCATE_PIN_HTML : '') +
     `</span>` +
-    `<span>${esc(tp.title || 'UNTITLED')}</span>` +
+    `<span>${esc(tileTitle(tp.title))}</span>` +
     `<small class="mono dim recap-tile-sub">@${esc(tp.username || 'unknown')} / ${esc(subLabel)}</small>`;
   tile.addEventListener('click', () => onClick(tp.id));
   wireLocatePin(tile, tp.id);
@@ -3428,8 +3445,12 @@ function renderCommunityPulse() {
 
   reactions.forEach(r => {
     if (!EMOJI[r.emoji]) return;
+    // the server sends the whole known emoji set, so untouched ones arrive at 0.
+    // a row of "0" chips is pure noise beside the counts that actually moved -
+    // drop them; if every count is 0 the empty state below covers the panel.
+    if (!r.count) return;
     const chip = document.createElement('div');
-    chip.className = 'pulse-chip' + (r.count ? '' : ' zero');
+    chip.className = 'pulse-chip';
     chip.title = r.emoji.toUpperCase();
     chip.innerHTML =
       `<span class="pc-emoji">${EMOJI[r.emoji]}</span>` +
@@ -4142,7 +4163,7 @@ function renderPeople() {
     b.innerHTML =
       `<span class="avatar">${avatarInner(u)}</span>` +
       `<span><span class="p-name">${esc(u.displayName)}</span><br>` +
-      `<span class="mono dim p-sub">@${esc(u.username)} - ${u.photoCount} PHOTO${u.photoCount === 1 ? '' : 'S'}</span></span>`;
+      `<span class="mono dim p-sub">@${esc(u.username)} / ${u.photoCount} PHOTO${u.photoCount === 1 ? '' : 'S'}</span></span>`;
     b.addEventListener('click', () => showProfile(u.username));
     peopleGrid.appendChild(b);
   });
@@ -4182,7 +4203,7 @@ function renderAtlasGlobe(places) {
     atlasGlobe = createGlobe(canvas, {
       onPick: pl => {
         const geo = [pl.state, pl.country].filter(Boolean).join(', ');
-        label.textContent = geo ? `${pl.place}  ·  ${geo}` : pl.place;
+        label.textContent = geo ? `${pl.place} / ${geo}` : pl.place;
         label.hidden = !label.textContent;
         const card = [...atlasGrid.querySelectorAll('.atlas-card')].find(el => el.dataset.place === (pl.place || ''));
         if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.add('atlas-card-hit'); setTimeout(() => card.classList.remove('atlas-card-hit'), 1400); }
@@ -4296,7 +4317,7 @@ function albumCardHTML(a) {
   const cover = a.coverFile ? ` style="background-image:url('${esc(mediaSrc(a.coverFile))}')"` : '';
   return `<div class="album-cover"${cover}>${a.coverFile ? '' : 'EMPTY'}</div>` +
     `<div class="ac-body"><div class="ac-name">${esc(a.name)}</div>` +
-    `<div class="mono dim ac-sub">${a.photoCount} PHOTO${a.photoCount === 1 ? '' : 'S'} · @${esc(a.owner)}</div></div>`;
+    `<div class="mono dim ac-sub">${a.photoCount} PHOTO${a.photoCount === 1 ? '' : 'S'} / @${esc(a.owner)}</div></div>`;
 }
 function renderAlbumsGrid(gridEl, list, emptyEl) {
   gridEl.innerHTML = '';
@@ -4357,7 +4378,7 @@ async function showAlbum(id, updateHash = true) {
   document.getElementById('album-edit-form').hidden = true;
   albumsEl.scrollTop = 0;
   document.getElementById('album-name').textContent = a.name;
-  document.getElementById('album-meta').textContent = `@${a.owner} · ${a.photoCount} PHOTO${a.photoCount === 1 ? '' : 'S'}`;
+  document.getElementById('album-meta').textContent = `@${a.owner} / ${a.photoCount} PHOTO${a.photoCount === 1 ? '' : 'S'}`;
   document.getElementById('album-desc').textContent = a.description || '';
   const own = me && (me.username === a.owner || isAdminProfile() || isCommunityAdmin());
   document.getElementById('album-actions').hidden = !own;
@@ -4690,8 +4711,8 @@ async function showProfile(username, updateHash = true) {
   document.getElementById('profile-name').textContent = p.displayName;
   document.getElementById('profile-username').textContent = '@' + p.username;
   document.getElementById('profile-meta').textContent =
-    `JOINED ${new Date(p.joined).getFullYear()} - ${p.photoCount} PHOTO${p.photoCount === 1 ? '' : 'S'}` +
-    (p.location ? ` - ${p.location.toUpperCase()}` : '');
+    `JOINED ${new Date(p.joined).getFullYear()} / ${p.photoCount} PHOTO${p.photoCount === 1 ? '' : 'S'}` +
+    (p.location ? ` / ${p.location.toUpperCase()}` : '');
   document.getElementById('profile-bio').textContent = p.bio || (own ? 'No bio yet - hit EDIT PROFILE to add one.' : '');
   const links = document.getElementById('profile-links');
   links.innerHTML = '';

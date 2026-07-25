@@ -72,6 +72,26 @@ export function fitHeadingFont(ctx, text, maxW, startPx, minPx, weight = 600, fa
   return size;
 }
 
+/* Truncate `text` with an ellipsis so it fits within maxW at the caller's
+   current ctx.font. Canvas has no text-overflow, so every renderer that draws a
+   user-supplied string into a fixed slot needs this or the string simply runs
+   over whatever is beside it. Returns '' when even one character will not fit.
+   Binary search keeps this cheap enough to call per card per texture build. */
+export function clipText(ctx, text, maxW) {
+  const s = String(text == null ? '' : text);
+  if (!s) return '';
+  if (ctx.measureText(s).width <= maxW) return s;
+  const ell = '…';
+  if (ctx.measureText(ell).width > maxW) return '';
+  let lo = 0, hi = s.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(s.slice(0, mid) + ell).width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? s.slice(0, lo) + ell : '';
+}
+
 /* render a horizontal thumbnail filmstrip into `container` from an ordered
    `items` list, marking item #activeIndex active and scrolling it into view.
    Each item may carry {heroSrc|src, title}. Clicking a thumb calls onPick(i).

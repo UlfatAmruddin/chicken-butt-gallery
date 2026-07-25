@@ -91,10 +91,12 @@ export function createGlobe(container, { onPick } = {}) {
 
   const pinsGroup = new THREE.Group();   // pins spin with the earth
   world.add(pinsGroup);
+  // white markers: the rest of the product is monochrome plus the community
+  // accent, so a saturated cyan read as a colour from a different system.
   const pinGeo = new THREE.SphereGeometry(0.028, 16, 16);
-  const pinMat = new THREE.MeshBasicMaterial({ color: 0x7fdcff });
+  const pinMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const stemGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.12, 6);
-  const stemMat = new THREE.MeshBasicMaterial({ color: 0x7fdcff, transparent: true, opacity: 0.55 });
+  const stemMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
   let pinMeshes = [];
 
   function clearPins() {
