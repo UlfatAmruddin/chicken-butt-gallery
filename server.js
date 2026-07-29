@@ -39,6 +39,26 @@ const MAX_COMMENTS_PER_POST = 500;
 const DUMMY_LOGIN_SALT = 'cbg-login-timing-equalizer';
 // usernames blocked at registration (prototype-magic names + a few impersonation-y ones).
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype', 'hasownproperty', 'admin', 'root', 'system', 'everyone', 'null', 'undefined']);
+// the tag roster the upload/edit chips offer. A new community starts empty, so it is
+// grown here from the tags members actually apply; capped so it cannot be flooded.
+const MAX_SCOPES_PER_COMMUNITY = 40;
+// prompts live inside the communities blob, which is deep-cloned and rewritten in
+// full on every community write; bound the list so one community can't tax them all.
+const MAX_PROMPTS_PER_COMMUNITY = 100;
+
+const cleanTags = list =>
+  Array.isArray(list) ? list.slice(0, 8).map(t => clean(t, 20).toUpperCase()).filter(Boolean) : [];
+
+function growScopes(c, tags) {
+  if (!c) return;
+  const scopes = communityScopes(c);
+  const room = MAX_SCOPES_PER_COMMUNITY - scopes.length;
+  if (room <= 0) return;
+  const added = [...new Set(tags)].filter(t => !scopes.includes(t)).slice(0, room);
+  if (!added.length) return;
+  c.scopes = [...scopes, ...added].sort();
+  saveJSON('communities.json', communities);
+}
 
 /* ---------------- API ---------------- */
 async function handleApi(req, res, pathname, params) {
@@ -104,23 +124,30 @@ async function handleApi(req, res, pathname, params) {
       if (!auth) return;
       const b = JSON.parse(await readBody(req, 12 * 1024 * 1024));
       const u = auth.user;
+      // Stage every image before touching the record. The client sends avatar and
+      // cover together, so validating inline meant a rejected second image returned
+      // 400 with the first one's old file already deleted and the text edits live in
+      // memory - which the next unrelated saveJSON would then quietly commit.
+      const staged = [];
+      for (const field of ['avatar', 'cover']) {
+        if (b[field] === undefined) continue;
+        if (b[field] === null || b[field] === '') { staged.push({ field, file: '', old: u[field] }); continue; }
+        const saved = await saveImage(b[field], 'avatars', `${u.username}-${field}`, 8 * 1024 * 1024);
+        if (saved.error) {
+          for (const s of staged) if (s.file) await deleteImage(s.file);   // drop this request's uploads
+          return send(res, 400, { error: saved.error });
+        }
+        staged.push({ field, file: saved.file, old: u[field] });
+      }
+      // no awaits between the first mutation and saveJSON, so the record cannot be
+      // observed half-applied
       if (b.displayName !== undefined) u.displayName = clean(b.displayName, 40) || u.username;
       if (b.bio !== undefined) u.bio = clean(b.bio, 280);
       if (b.location !== undefined) u.location = clean(b.location, 60);
       if (b.website !== undefined) u.website = clean(b.website, 120);
-      for (const field of ['avatar', 'cover']) {
-        if (b[field] === undefined) continue;
-        if (b[field] === null || b[field] === '') {
-          if (u[field]) await deleteImage(u[field]);
-          u[field] = '';
-        } else {
-          const saved = await saveImage(b[field], 'avatars', `${u.username}-${field}`, 8 * 1024 * 1024);
-          if (saved.error) return send(res, 400, { error: saved.error });
-          if (u[field]) await deleteImage(u[field]);
-          u[field] = saved.file;
-        }
-      }
+      for (const s of staged) u[s.field] = s.file;
       saveJSON('users.json', users);
+      for (const s of staged) if (s.old && s.old !== s.file) await deleteImage(s.old);   // only after it is durable
       return send(res, 200, publicProfile(u));
     }
 
@@ -244,6 +271,16 @@ async function handleApi(req, res, pathname, params) {
       if (!c) return send(res, 404, { error: 'No such community.' });
       if (!canAdminCommunity(c, auth.user.username)) return send(res, 403, { error: 'Only admins can edit community settings.' });
       const b = JSON.parse(await readBody(req, 12 * 1024 * 1024));
+      // validate the cover first: applying the text fields before it meant a rejected
+      // image returned 400 with those edits already live in memory, to be committed
+      // by the next unrelated write to communities.json
+      let newCover = null;   // null = leave alone, '' = clear, string = replace
+      if (b.cover === '') newCover = '';
+      else if (b.cover) {
+        const saved = await saveImage(b.cover, 'community', `${c.id}-cover`, 8 * 1024 * 1024);
+        if (saved.error) return send(res, 400, { error: saved.error });
+        newCover = saved.file;
+      }
       if (b.name !== undefined && canOwnCommunity(c, auth.user.username)) {
         const name = clean(b.name, 60);
         if (name) c.name = name;
@@ -258,16 +295,11 @@ async function handleApi(req, res, pathname, params) {
         const prompts = communityPrompts(c);
         c.activePromptId = prompts.some(p => p.id === b.activePromptId) ? b.activePromptId : '';
       }
-      if (b.cover === '') {
-        if (c.cover) await deleteImage(c.cover);   // don't orphan the old cover on clear
-        c.cover = '';
-      } else if (b.cover) {
-        const saved = await saveImage(b.cover, 'community', `${c.id}-cover`, 8 * 1024 * 1024);
-        if (saved.error) return send(res, 400, { error: saved.error });
-        if (c.cover && c.cover !== saved.file) await deleteImage(c.cover);   // and not on replace
-        c.cover = saved.file;
-      }
+      const oldCover = c.cover;
+      if (newCover !== null) c.cover = newCover;
       saveJSON('communities.json', communities);
+      // only orphan the old file once the new state is durable
+      if (newCover !== null && oldCover && oldCover !== newCover) await deleteImage(oldCover);
       addAudit(c.id, auth.user.username, 'community.updated', c.id, { name: c.name });
       return send(res, 200, publicCommunity(c, auth.user.username));
     }
@@ -431,7 +463,13 @@ async function handleApi(req, res, pathname, params) {
       const text = clean(b.text, 140);
       if (!text) return send(res, 400, { error: 'Write a prompt first.' });
       const prompt = { id: crypto.randomBytes(6).toString('hex'), text, createdBy: auth.user.username, created: Date.now() };
-      communityPrompts(c).unshift(prompt);
+      const promptList = communityPrompts(c);
+      // reject rather than drop the oldest: c.activePromptId and post.promptId both
+      // reference prompts by id, so evicting one would orphan those back-references
+      if (promptList.length >= MAX_PROMPTS_PER_COMMUNITY) {
+        return send(res, 429, { error: 'This community has reached its prompt limit. Delete one first.' });
+      }
+      promptList.unshift(prompt);
       if (b.active !== false) c.activePromptId = prompt.id;
       saveJSON('communities.json', communities);
       addAudit(c.id, auth.user.username, 'prompt.created', prompt.id, { title: text });
@@ -646,12 +684,11 @@ async function handleApi(req, res, pathname, params) {
         communityId: ctx.community.id,
         username: ctx.auth.user.username,
         title: clean(b.title, 40) || 'UNTITLED',
-        client: clean(b.client, 30),
         place: clean(b.place, 80),
         ...sanitizeGeo(b),   // lat, lng, country, state
         caption: clean(b.caption, 300),
         year: Number.isFinite(yr) && yr >= 1900 && yr <= 2100 ? yr : new Date().getFullYear(),
-        tags: Array.isArray(b.tags) ? b.tags.slice(0, 8).map(t => clean(t, 20).toUpperCase()).filter(Boolean) : [],
+        tags: cleanTags(b.tags),
         file: saved.file,
         layout: ['full', 'portrait', 'landscape'].includes(b.layout) ? b.layout : 'full',
         pinned: false,
@@ -663,6 +700,7 @@ async function handleApi(req, res, pathname, params) {
       };
       posts.push(post);
       saveJSON('posts.json', posts);
+      growScopes(ctx.community, post.tags);
       addAudit(ctx.community.id, ctx.auth.user.username, 'photo.created', post.id, { title: post.title });
       return send(res, 200, post);
     }
@@ -861,7 +899,6 @@ async function handleApi(req, res, pathname, params) {
       if (!canManagePost(auth, post)) return send(res, 403, { error: 'You do not have permission to edit this photo.' });
       const b = JSON.parse(await readBody(req, 64 * 1024));
       if (b.title !== undefined) post.title = clean(b.title, 40) || 'UNTITLED';
-      if (b.client !== undefined) post.client = clean(b.client, 30);
       if (b.place !== undefined) post.place = clean(b.place, 80);
       if (b.lat !== undefined || b.lng !== undefined || b.country !== undefined || b.state !== undefined) {
         // only overwrite the geo fields actually present in the body, so a partial
@@ -877,7 +914,7 @@ async function handleApi(req, res, pathname, params) {
         const y = parseInt(b.year, 10);
         if (Number.isFinite(y) && y >= 1900 && y <= 2100) post.year = y;
       }
-      if (Array.isArray(b.tags)) post.tags = b.tags.slice(0, 8).map(t => clean(t, 20).toUpperCase()).filter(Boolean);
+      if (Array.isArray(b.tags)) { post.tags = cleanTags(b.tags); growScopes(c, post.tags); }
       if (['full', 'portrait', 'landscape'].includes(b.layout)) post.layout = b.layout;
       saveJSON('posts.json', posts);
       addAudit(post.communityId, auth.user.username, 'photo.updated', post.id, { title: post.title });

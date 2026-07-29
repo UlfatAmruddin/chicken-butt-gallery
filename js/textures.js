@@ -46,20 +46,20 @@ export function makeCardTexture(p, img, maxAniso) {
   x.fillStyle = botBand;
   x.fillRect(0, S - bandH, S, bandH);
 
-  // header - client (left), project title (right). both are user-supplied and
+  // header - author (left), photo title (right). both are user-supplied and
   // share one row, so each gets an explicit share of the width: without a budget
   // a long title ran leftwards straight through the username.
   const headerW = S - 2 * pad;
   const gap = 12;
   x.fillStyle = '#d9d9d9';
   x.font = p.logo === 'mono' ? '700 16px "Space Mono"' : '600 19px Inter';
-  const clientText = clipText(x, p.client, headerW * 0.45);
-  x.fillText(clientText, pad, 36);
-  const usedByClient = clientText ? x.measureText(clientText).width : 0;
+  const who = clipText(x, p.username ? '@' + p.username : '', headerW * 0.5);
+  x.fillText(who, pad, 36);
+  const usedByWho = who ? x.measureText(who).width : 0;
   x.font = '400 12px "Space Mono"';
   x.fillStyle = '#8e8e8e';
   x.textAlign = 'right';
-  x.fillText(clipText(x, p.title, headerW - usedByClient - gap), S - pad, 34);
+  x.fillText(clipText(x, p.title, headerW - usedByWho - gap), S - pad, 34);
   x.textAlign = 'left';
 
   // artwork area
@@ -94,18 +94,14 @@ export function makeCardTexture(p, img, maxAniso) {
     x.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
   }
 
-  // footer - category, boxed tags, year. the year is right-aligned, so the chip
-  // run needs a hard stop line or a photo with several tags draws straight
-  // through it. chips that do not fit are dropped rather than clipped.
+  // footer - boxed tags, year. the year is right-aligned, so the chip run needs
+  // a hard stop line or a photo with several tags draws straight through it.
+  // chips that do not fit are dropped rather than clipped.
   const fy = S - 22;
   const year = String(p.year);
   x.font = '400 12px "Space Mono"';
   const stop = S - pad - x.measureText(year).width - 12;
-  x.fillStyle = '#9a9a9a';
   let tx0 = pad;
-  const cat = clipText(x, p.cat, stop - pad);
-  x.fillText(cat, tx0, fy);
-  tx0 += (cat ? x.measureText(cat).width : 0) + 10;
   x.font = '400 11px "Space Mono"';
   for (const t of p.tags) {
     const w = x.measureText(t).width + 14;

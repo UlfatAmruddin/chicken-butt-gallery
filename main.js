@@ -26,12 +26,20 @@ let savedIds = new Set();     // postIds the logged-in user has privately saved 
 // give the API client read access to the active community for auto-scoping
 api.communityResolver = () => currentCommunity;
 
+// a refresh the auth host actually rejected: the session is gone, so stop rendering
+// as if it is not. without this the chip and nav still read signed-in while every
+// request fails, and only a manual reload recovers.
+api.onSessionRejected = () => {
+  if (!me) return;
+  me = null;
+  toast('SESSION EXPIRED. PLEASE SIGN IN AGAIN.');
+  showLanding(true);
+};
+
 function postToProject(p) {
   return {
     src: mediaSrc(p.file),
-    client: p.client || '@' + p.username,
     title: (p.title || 'UNTITLED').toUpperCase(),
-    cat: 'COMMUNITY',
     tags: (p.tags && p.tags.length) ? p.tags : ['PHOTO'],
     year: p.year || new Date(p.created).getFullYear(),
     caption: p.caption || '',
@@ -380,6 +388,10 @@ const clock = new THREE.Clock();
 
 function updateCards(dt) {
   let needsMoreFrames = false;
+  // the margin below deliberately keeps just-off-screen cards alive to stop
+  // edge pop-in, so it cannot also answer "is the screen blank?". count the
+  // cards actually inside the frustum for that.
+  let onScreenCount = 0;
   const vFov = THREE.MathUtils.degToRad(camera.fov);
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
   const margin = (layout.cell / layout.radius) * 1.3;
@@ -398,6 +410,7 @@ function updateCards(dt) {
       if (hovered === card) hovered = null;
       continue;
     }
+    if (Math.abs(th) < hFov / 2 && Math.abs(ph) < vFov / 2) onScreenCount++;
     const r = layout.radius - card.pop;
     const cp = Math.cos(ph), sp = Math.sin(ph);
     const ct = Math.cos(th), st = Math.sin(th);
@@ -415,8 +428,52 @@ function updateCards(dt) {
     if (Math.abs(opacityTarget - card.op) > 0.002) needsMoreFrames = true;
     card.mesh.material.opacity = card.op * gal.fade;
   }
+  syncRecentre(onScreenCount);
   return needsMoreFrames;
 }
+
+/* The gallery wraps on both axes and nothing ever resets the pan, so a long drag
+   can leave the viewer on empty sphere with no card in frame and no way back.
+   Offer an escape hatch, but only once the emptiness has held for a moment - a
+   fast flick across a gap should not flash a button. Hiding is immediate. */
+const recentreBtn = document.getElementById('recentre-btn');
+let recentreTimer = 0;
+
+// the button only means anything while the sphere is the visible view
+function sphereIsTheView() {
+  return !overlayOpen() && !shortcutsOpen() && !document.body.classList.contains('entry-mode');
+}
+
+function hideRecentre() {
+  clearTimeout(recentreTimer);
+  recentreTimer = 0;
+  recentreBtn.hidden = true;
+}
+
+function syncRecentre(onScreenCount) {
+  if (onScreenCount > 0 || !cards.length || !sphereIsTheView()) {
+    hideRecentre();
+    return;
+  }
+  if (recentreBtn.hidden && !recentreTimer) {
+    // the render loop can idle out before this fires, so re-check on arrival
+    // rather than committing to a decision made 600ms ago.
+    recentreTimer = setTimeout(() => {
+      recentreTimer = 0;
+      if (sphereIsTheView()) recentreBtn.hidden = false;
+    }, 600);
+  }
+}
+
+// pan back to the nearest wrapped equivalent of the origin; the frame loop's
+// existing lerp toward tx/ty carries the motion, same as focusCard.
+function recentreSphere() {
+  state.tx = nearestEquiv(0, state.cx, layout.totalW);
+  state.ty = nearestEquiv(0, state.cy, layout.totalH);
+  state.vx = state.vy = 0;
+  markSceneDirty();
+}
+recentreBtn.addEventListener('click', recentreSphere);
 
 function updateHover(now, sceneMoving) {
   if (!mouseHas || ui.locked || drag.active) {
@@ -704,7 +761,6 @@ const detail = document.getElementById('detail');
 const dEls = {
   title: document.getElementById('d-title-inner'),
   clientTop: document.getElementById('d-client-top'),
-  client: document.getElementById('d-client'),
   year: document.getElementById('d-year'),
   tags: document.getElementById('d-tags'),
   placeRow: document.getElementById('d-place-row'),
@@ -716,9 +772,8 @@ const dEls = {
 
 function fillDetail(p) {
   dEls.title.textContent = p.title;
-  dEls.client.textContent = p.community ? '@' + p.username : p.client;
   dEls.year.textContent = p.year;
-  dEls.tags.textContent = [p.cat, ...p.tags].join(' / ');
+  dEls.tags.textContent = p.tags.join(' / ');
   const place = (p.place || '').trim();
   dEls.placeRow.hidden = !place;
   dEls.place.innerHTML = '';
@@ -749,19 +804,11 @@ function fillDetail(p) {
   document.getElementById('d-prev').hidden = navHidden;
   document.getElementById('d-next').hidden = navHidden;
   updateSlideAvailability();
-  if (p.community) {
-    dEls.clientTop.textContent = `@${p.username} - VIEW PROFILE ↗`;
-    dEls.clientTop.style.textDecoration = 'underline';
-    dEls.clientTop.onclick = () => { closeProject(); openPeople(p.username); };
-    dEls.p1.textContent = p.caption || `"${p.title}" was posted to the wall by @${p.username} in ${p.year}. Every photo here belongs to someone - tap their name above to see who they are and what else they've shared.`;
-    dEls.p2.textContent = `Posted by @${p.username}. Want your own photos up here? Hit the + button in the bottom-left corner of the wall and post whatever you want. The sphere has room for everyone.`;
-  } else {
-    dEls.clientTop.textContent = `${p.client} - ${p.year}`;
-    dEls.clientTop.style.textDecoration = 'none';
-    dEls.clientTop.onclick = null;
-    dEls.p1.textContent = `${p.title} is a ${p.cat.toLowerCase()}-led collaboration with ${p.client}, built to translate the brand's ambition into a living, breathing digital artefact. We prototyped early, tested often, and let the craft carry the idea from first sketch to final ship.`;
-    dEls.p2.textContent = `Spanning ${[p.cat, ...p.tags].join(', ').toLowerCase()}, the work reached audiences across every touchpoint that matters. The result: a piece of the internet people actually remember - measured not just in numbers, but in the messages that landed in our inbox the week it launched.`;
-  }
+  dEls.clientTop.textContent = `@${p.username} - VIEW PROFILE ↗`;
+  dEls.clientTop.style.textDecoration = 'underline';
+  dEls.clientTop.onclick = () => { closeProject(); openPeople(p.username); };
+  dEls.p1.textContent = p.caption || `"${p.title}" was posted to the wall by @${p.username} in ${p.year}. Every photo here belongs to someone - tap their name above to see who they are and what else they've shared.`;
+  dEls.p2.textContent = `Posted by @${p.username}${p.place ? ' in ' + p.place : ''}.`;
   clearReply();   // a pending reply belongs to the photo we just left
   renderSocial(p);
   // keep the fullscreen cinema image in sync when it is open (stepPhoto /
@@ -1213,8 +1260,11 @@ function endPointer(e) {
     dHero.releasePointerCapture(e.pointerId);
   }
 }
-dHero.addEventListener('pointerup', endPointer);
-dHero.addEventListener('pointercancel', endPointer);
+// on window, not dHero: at scale 1 the pointer is never captured, so releasing
+// outside the hero left a stale entry in activePointers and the next plain drag was
+// treated as the second finger of a pinch. events from inside the hero still bubble.
+window.addEventListener('pointerup', endPointer);
+window.addEventListener('pointercancel', endPointer);
 
 // slideshow: pause while the pointer rests on the image (reading a photo),
 // resume on leave. defined here because dHero exists in this section.
@@ -1257,6 +1307,7 @@ function openProject(card) {
 
 function showDetail() {
   detail.style.display = 'block';
+  syncSphereChrome();
   detail.setAttribute('aria-hidden', 'false');
   // during a slideshow advance the panel is already open: skip the full slide-up
   // intro and just crossfade the new photo/text in (or hard-cut for reduced motion).
@@ -1278,7 +1329,7 @@ function showDetail() {
       { clearProps: 'opacity,transform,clipPath' });
     return;
   }
-  gsap.fromTo(detail, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.85, ease: 'power4.inOut' });
+  gsap.fromTo(detail, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.85, ease: 'power4.inOut', overwrite: true });
   gsap.fromTo('#d-title span', { yPercent: 110 }, { yPercent: 0, duration: 0.9, delay: 0.45, ease: 'power3.out' });
   gsap.fromTo('.d-meta, .d-cols', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.6, stagger: 0.1, ease: 'power2.out' });
   gsap.fromTo('.d-hero', { clipPath: 'inset(100% 0 0 0)' }, { clipPath: 'inset(0% 0 0 0)', duration: 1, delay: 0.55, ease: 'power3.inOut' });
@@ -1297,7 +1348,7 @@ function closeProject() {
   detail.setAttribute('aria-hidden', 'true');
   gsap.to(detail, {
     yPercent: 100, duration: reduceMotion ? 0 : 0.7, ease: 'power3.inOut',
-    onComplete: () => { detail.style.display = 'none'; },
+    onComplete: () => { detail.style.display = 'none'; syncSphereChrome(); },
   });
   // opened from an overlay (album / flat grid / deep link): no sphere restore
   if (detailFromOverlay || !sel) {
@@ -1305,19 +1356,24 @@ function closeProject() {
     if (pendingRebuild) { pendingRebuild = false; rebuildGallery(); }
     return;
   }
-  gsap.to(gal, { others: 1, duration: 0.8, delay: 0.2 });
+  // The sphere release must NOT ride on the card's pop tween: pulseCard kills that
+  // tween by name, so FIND ON SPHERE on the currently-selected card used to kill it
+  // mid-delay, its onComplete never ran, and ui.locked stayed true forever - the
+  // sphere was dead until a reload. Release on its own timer instead.
+  const rd = reduceMotion ? 0 : 1;
+  const release = () => {
+    sel = null; ui.locked = false; canvas.style.cursor = 'grab';
+    zoomState.current = camera.fov;
+    if (pendingRebuild) { pendingRebuild = false; rebuildGallery(); }
+  };
+  gsap.to(gal, { others: 1, duration: 0.8 * rd, delay: 0.2 * rd });
   gsap.to(camera, {
-    fov: zoomState.target, duration: 0.9, delay: 0.15, ease: 'power3.inOut',
+    fov: zoomState.target, duration: 0.9 * rd, delay: 0.15 * rd, ease: 'power3.inOut',
     onUpdate: () => camera.updateProjectionMatrix(),
   });
-  gsap.to(sel, {
-    pop: 0, duration: 0.9, delay: 0.15, ease: 'power3.inOut',
-    onComplete: () => {
-      sel = null; ui.locked = false; canvas.style.cursor = 'grab';
-      zoomState.current = camera.fov;
-      if (pendingRebuild) { pendingRebuild = false; rebuildGallery(); }
-    },
-  });
+  gsap.to(sel, { pop: 0, duration: 0.9 * rd, delay: 0.15 * rd, ease: 'power3.inOut' });
+  if (reduceMotion) release();
+  else gsap.delayedCall(1.05, release);
 }
 let pendingRebuild = false;
 
@@ -1372,9 +1428,7 @@ function focusCardOnSphere(postId) {
   if (albumsOpen) closeAlbums();
   if (peopleOpen) closePeople();
   if (atlasOpen) closeAtlas();
-  if (roomOpen) closeCommunityRoom();
-  if (adminOpen) closeAdminPanel();
-  if (recapOpen) closeRecap();
+  closeFocusPages();
   if (panelOpen) hideFilterPanel();
   if (notifOpen) closeNotifPanel();
   hideEntryScreens();
@@ -1407,12 +1461,27 @@ function focusCardOnSphere(postId) {
   toast('FOUND ON SPHERE');
 }
 
-/* ---- scope chips (shared by upload + edit forms) ---- */
-const SCOPES = ['WEBSITE', '3D', 'AI', 'CAMPAIGN', 'FILM', 'TOOL', 'SOCIAL', 'CONTENT', 'EVENT', 'GAME', 'AR', 'MOTION', 'OOH', 'ILLUSTRATION', 'PHYSICAL', 'PHOTO'];
+/* ---- tag chips (shared by upload + edit forms) ---- */
+/* the roster the server keeps for this community, not a fixed portfolio list */
+function communityTags() {
+  const list = currentCommunity && currentCommunity.scopes;
+  return Array.isArray(list) && list.length ? list : ['PHOTO'];
+}
 function buildScopeChips(container, selected = []) {
   container.innerHTML = '';
-  const active = new Set(selected.filter(t => SCOPES.includes(t)));
-  SCOPES.forEach(t => {
+  const active = new Set(selected);
+  const shown = new Set();
+  // typing a tag is the only way the roster ever grows: the server unions the tags
+  // of each post into it, so without this a new community is stuck with one tag.
+  const input = document.createElement('input');
+  input.className = 'scope-new mono';
+  input.maxLength = 20;
+  input.placeholder = '+ TAG';
+  container.appendChild(input);
+
+  const addChip = t => {
+    if (shown.has(t)) return;
+    shown.add(t);
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'scope-chip' + (active.has(t) ? ' active' : '');
@@ -1420,8 +1489,23 @@ function buildScopeChips(container, selected = []) {
     b.addEventListener('click', () => {
       if (active.has(t)) { active.delete(t); b.classList.remove('active'); }
       else if (active.size < 3) { active.add(t); b.classList.add('active'); }
+      else toast('UP TO 3 TAGS');
     });
-    container.appendChild(b);
+    container.insertBefore(b, input);
+  };
+  // a tag outside the roster still gets a chip, so editing can never silently drop it
+  [...communityTags(), ...selected].forEach(addChip);
+
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const t = input.value.trim().toUpperCase().slice(0, 20);
+    input.value = '';
+    if (!t || shown.has(t)) return;
+    if (active.size < 3) active.add(t);
+    else toast('UP TO 3 TAGS');
+    // the chip is added either way, so the tag is still there to pick once a slot frees up
+    addChip(t);
   });
   return () => [...active];
 }
@@ -1436,7 +1520,6 @@ document.getElementById('d-edit-btn').addEventListener('click', () => {
   const p = detailProject;
   if (!p) return;
   document.getElementById('de-title').value = p.title;
-  document.getElementById('de-client').value = p.client.startsWith('@') ? '' : p.client;
   document.getElementById('de-year').value = p.year;
   document.getElementById('de-place').value = p.place || '';
   resetEditPlace(p.place || '', geoOf(p));   // seed geo from THIS photo so a prior pick can't leak in
@@ -1458,7 +1541,6 @@ dEditForm.addEventListener('submit', async (e) => {
   try {
     const updated = await api.call('PUT', '/api/photos/' + p.postId, {
       title: document.getElementById('de-title').value.trim(),
-      client: document.getElementById('de-client').value.trim(),
       year: document.getElementById('de-year').value,
       place: document.getElementById('de-place').value.trim(),
       ...(editGeo || { lat: null, lng: null, country: '', state: '' }),
@@ -1875,6 +1957,12 @@ function renderLikers(p) {
   dLikersEl.appendChild(full);
 }
 async function deleteComment(p, cid) {
+  // replies have no replies of their own, so only warn about the cascade when there is one
+  const kids = p.comments.filter(c => c.parentId === cid).length;
+  const warn = kids
+    ? `Delete this comment? Its ${kids} ${kids === 1 ? 'reply goes' : 'replies go'} too, and that cannot be undone.`
+    : 'Delete this comment? This cannot be undone.';
+  if (!confirm(warn)) return;
   try {
     await api.call('DELETE', `/api/photos/${p.postId}/comments/${cid}`);
     // mirror the server cascade: deleting a top-level comment also drops its replies
@@ -2142,6 +2230,9 @@ function closeShortcuts() {
   shortcutsPrevFocus = null;
 }
 if (shortcutsClose) shortcutsClose.addEventListener('click', closeShortcuts);
+// the "?" key was the only way in; give the cheat sheet an on-screen trigger too
+const shortcutsChip = document.getElementById('shortcuts-chip');
+if (shortcutsChip) shortcutsChip.addEventListener('click', openShortcuts);
 if (shortcutsOverlay) shortcutsOverlay.addEventListener('click', (e) => {
   // click on the dim backdrop (not the panel) closes it
   if (e.target === shortcutsOverlay) closeShortcuts();
@@ -2199,6 +2290,9 @@ window.addEventListener('keydown', (e) => {
     else if (!albumModal.hidden) closeAlbumModal();
     else if (!pickAlbumModal.hidden) closePickAlbum();
     else if (!addPhotosModal.hidden) { closeAddPhotos(); if (viewingAlbum) showAlbum(viewingAlbum.album.id); }
+    // admin sits above detail (z-index 75 vs 70), so it folds first. same landing
+    // as the panel's own BACK button.
+    else if (adminOpen) { closeAdminPanel(); if (adminReturn) adminReturn(); }
     else if (detail.style.display === 'block' && slideshow.playing) { e.preventDefault(); stopSlideshow(); return; }
     else if (detail.style.display === 'block' && detailZoom.scale > 1.001) { e.preventDefault(); resetDetailZoom(); return; }
     else if (detail.style.display === 'block') closeProject();
@@ -2228,7 +2322,7 @@ let panelOpen = false;
 function buildFilterTags() {
   fpTags.innerHTML = '';
   const counts = new Map();
-  pool.forEach(p => [p.cat, ...p.tags].forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+  pool.forEach(p => p.tags.forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
   [...counts.keys()].sort().forEach(tag => {
     const b = document.createElement('button');
     b.className = 'fp-tag' + (activeTags.has(tag) ? ' active' : '');
@@ -2245,8 +2339,7 @@ function buildFilterTags() {
 function applyFilter() {
   cards.forEach(c => {
     const p = pool[c.pIdx];
-    const all = [p.cat, ...p.tags];
-    c.filtered = activeTags.size > 0 && !all.some(t => activeTags.has(t));
+    c.filtered = activeTags.size > 0 && !p.tags.some(t => activeTags.has(t));
   });
   filterBtn.textContent = activeTags.size ? `Filter (${activeTags.size})` : 'Filter';
   cardsAnimating = true;
@@ -2264,9 +2357,39 @@ function hideFilterPanel() {
   gsap.to(filterPanel, { opacity: 0, y: 16, duration: 0.3, ease: 'power2.in', onComplete: () => { filterPanel.hidden = true; } });
 }
 filterBtn.addEventListener('click', () => (panelOpen ? hideFilterPanel() : showFilterPanel()));
-document.getElementById('fp-clear').addEventListener('click', () => {
+
+/* The filter and recentre buttons only do anything on the sphere, but both are
+   fixed chrome, so they also sat on top of every overlay page as dead controls
+   (recentre outranks those pages, so it was clickable there). Hide them.
+   Recentre cannot rely on its own per-frame sync for this: the render loop stops
+   once the sphere is covered and at rest, so it would freeze mid-visible.
+   Reads the pages' live display state rather than their open-flags: the close
+   paths only set display:none inside a gsap onComplete, so a flag (or a call made
+   before the write) reads stale. Hidden via the `hidden` attribute, never
+   opacity, or they stay keyboard-focusable while invisible. */
+const OVERLAY_PAGE_IDS = ['flat-view', 'people', 'albums', 'atlas', 'detail',
+  'community-room', 'community-admin', 'recap-overlay'];
+
+function syncSphereChrome() {
+  const covered = OVERLAY_PAGE_IDS.some(id => {
+    const el = document.getElementById(id);
+    return el && getComputedStyle(el).display !== 'none';
+  });
+  if (covered) {
+    hideFilterPanel();
+    hideRecentre();
+  }
+  filterBtn.hidden = covered;
+}
+/* drop the tag filter and un-mark every chip. named so a community switch can reach
+   it too: activeTags is module-global, so a filter set in one room used to carry into
+   the next and hide every card there with no active chip to explain why. */
+function clearTagFilter() {
   activeTags.clear();
   fpTags.querySelectorAll('.fp-tag').forEach(b => b.classList.remove('active'));
+}
+document.getElementById('fp-clear').addEventListener('click', () => {
+  clearTagFilter();
   applyFilter();
 });
 
@@ -2283,10 +2406,21 @@ function setNav(view) {
   navBtns.forEach(n => n.classList.toggle('active', n === target));
   movePill(target);
 }
+// the pill is positioned in pixels, so it strands itself when the nav relayouts.
+let pillResizeTimer = 0;
+addEventListener('resize', () => {
+  clearTimeout(pillResizeTimer);
+  pillResizeTimer = setTimeout(() => {
+    const active = document.querySelector('.pill-nav .active');
+    if (active) movePill(active, true);
+  }, 100);
+});
 navBtns.forEach(b => b.addEventListener('click', () => {
   const view = b.dataset.view;
+  if (settingsOpen) toggleSettings();   // nothing else dismisses it, so it would float over the overlay
   closeRecap();
   clearRouteKind('recap');
+  if (view !== 'saved') clearRouteKind('saved');   // leaving saved must drop /saved from the URL too
   setNav(view);
   if (view === 'albums') { closeFlatView(); closePeople(); closeAtlas(); openAlbums(); }
   else if (view === 'people') { closeFlatView(); closeAlbums(); closeAtlas(); openPeople(); }
@@ -2326,7 +2460,7 @@ function filterSortFlat() {
   if (q) {
     list = list.filter(p => {
       const tags = Array.isArray(p.tags) ? p.tags.join(' ') : '';
-      const hay = `${p.title || ''} ${p.username || ''} ${p.caption || ''} ${tags} ${p.cat || ''} ${p.place || ''}`.toLowerCase();
+      const hay = `${p.title || ''} ${p.username || ''} ${p.caption || ''} ${tags} ${p.place || ''}`.toLowerCase();
       return hay.includes(q);
     });
   }
@@ -2396,9 +2530,10 @@ function openFlatView(mode = 'grid', saved = false) {
   if (!flatOpen) {
     flatOpen = true;
     flatEl.style.display = 'block';
+    syncSphereChrome();
     flatEl.setAttribute('aria-hidden', 'false');
     flatEl.scrollTop = 0;
-    gsap.fromTo(flatEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut' });
+    gsap.fromTo(flatEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut', overwrite: true });
   }
   setFlatMode(mode);
 }
@@ -2416,6 +2551,9 @@ function openFlatSearch(term) {
 
 function closeFlatView() {
   if (!flatOpen) return;
+  // flag cleared now, not in onComplete: during the slide-out the page is already
+  // closed, and a re-open inside that window must not be swallowed by the guard.
+  flatOpen = false;
   markSceneDirty();   // wake the sphere so it paints through the reveal
   flatQuery = '';
   flatSearchEl.value = '';
@@ -2423,9 +2561,10 @@ function closeFlatView() {
   flatEl.classList.remove('saved-view');
   if (flatTitleEl) flatTitleEl.textContent = 'GALLERY';
   flatEl.setAttribute('aria-hidden', 'true');
+  viewBtns.forEach(b => b.classList.remove('active'));   // the pair marks flat-view mode, not the sphere
   gsap.to(flatEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
-    onComplete: () => { flatEl.style.display = 'none'; flatOpen = false; },
+    onComplete: () => { flatEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 
@@ -2589,7 +2728,7 @@ async function init() {
     introDriftUntil = performance.now() + LOW_POWER.introDriftMs;
     markSceneDirty();
   });
-  handleHashRoute();
+  if (location.hash) handleHashRoute();   // a bare / keeps the landing, signed in or not
 }
 
 /* ============================================================
@@ -2605,6 +2744,7 @@ const inviteToolsBtn = document.getElementById('invite-tools-btn');
 const recapChip = document.getElementById('recap-chip');
 const hudMoreBtn = document.getElementById('hud-more-btn');
 const hudMoreSheet = document.getElementById('hud-more-sheet');
+const hsCommunityBtn = document.getElementById('hs-community');
 const hsAdminBtn = document.getElementById('hs-admin');
 const hsRecapBtn = document.getElementById('hs-recap');
 const posterChip = document.getElementById('poster-chip');
@@ -2793,12 +2933,19 @@ function updateCommunityHud() {
   }
   communityChip.hidden = false;
   communityChip.textContent = currentCommunity.name.toUpperCase();
+  // the room has one name: the mobile sheet says exactly what the desktop chip says
+  if (hsCommunityBtn) hsCommunityBtn.textContent = communityChip.textContent;
   inviteToolsBtn.hidden = !(isCommunityAdmin() || isAdminProfile());
   inviteToolsBtn.textContent = 'Admin';
   // recap is for everyone, but stays out of the entry screens. CSS hides the desktop
   // chip on mobile; the "More" sheet re-exposes recap/admin there instead.
   recapChip.hidden = document.body.classList.contains('entry-mode');
-  if (hudMoreBtn) hudMoreBtn.hidden = false;
+  if (hudMoreBtn) {
+    hudMoreBtn.hidden = false;
+    // on a phone the desktop chip row is hidden, so this button is the only place
+    // the room can name itself
+    hudMoreBtn.textContent = `${communityChip.textContent} · More`;
+  }
   if (hsAdminBtn) hsAdminBtn.hidden = inviteToolsBtn.hidden;
   if (hsRecapBtn) hsRecapBtn.hidden = recapChip.hidden;
   // the tour needs at least two photos to loop through; hide it otherwise so
@@ -2931,10 +3078,16 @@ async function bootstrapSession() {
       if (justLoggedIn) await afterAuthSuccess();   // a fresh sign-in proceeds into the app / pending action
       return;
     } catch (err) {
-      // Only drop the session when the server actually rejected the token. A 503
-      // means it could not reach Supabase to check - keep the session and let the
-      // user retry, otherwise an upstream blip logs everyone out for real.
-      if (err && err.transient) { toast('SIGN-IN CHECK UNAVAILABLE. RETRY IN A MOMENT.'); return; }
+      // Only drop the session when the server actually REJECTED the token. Anything
+      // that means "could not check" must keep it: a 503 (server could not reach
+      // Supabase), a 5xx from a proxy or cold start, and a fetch-level failure with
+      // no status at all (server restarting, offline reload, laptop waking up).
+      // Otherwise a blip destroys the refresh token and costs a full OAuth round trip.
+      const status = err && err.status;
+      if ((err && err.transient) || !status || status >= 500) {
+        toast('SIGN-IN CHECK UNAVAILABLE. RETRY IN A MOMENT.');
+        return;
+      }
       api.clearSession();
     }
   }
@@ -3021,6 +3174,7 @@ async function enterCommunity(id, updateHash = true) {
   closeFlatView(); closeAlbums(); closePeople(); closeAtlas();
   closeAdminPanel(); closeCommunityRoom(); closeRecap();
   if (detail.style.display === 'block') closeProject();
+  clearTagFilter();   // tags belong to the room that was showing, not the next one
 
   // load token: a faster second switch supersedes this one, so a stale response
   // never clobbers the newer community's data (mixed A-under-B renders).
@@ -3232,14 +3386,22 @@ async function renderInviteTools() {
   try { invites = await api.call('GET', '/api/communities/' + encodeURIComponent(currentCommunity.id) + '/invites'); }
   catch (e) { document.getElementById('invite-tools-err').textContent = String(e.message || 'COULD NOT LOAD').toUpperCase(); }
   document.getElementById('invite-list-empty').hidden = invites.length > 0;
+  const note = document.getElementById('invite-link-note');
+  note.hidden = invites.length === 0;
+  note.textContent = `ANYONE WITH THIS LINK CAN JOIN ${currentCommunity.name.toUpperCase()}`;
   invites.forEach(inv => {
     const link = routeUrl(`invite/${inv.code}`);
     const row = document.createElement('div');
-    row.className = 'pick-album-row';
+    row.className = 'pick-album-row invite-row';
     row.innerHTML =
       `<span class="pa-copy">${esc(link)}</span>` +
-      `<span class="pa-count">COPY</span>`;
+      `<button type="button" class="pa-copy-btn mono">COPY</button>`;
     row.addEventListener('click', () => copyRoute(`invite/${inv.code}`));
+    // the whole row copies; stop the button's own click so it copies once, not twice
+    row.querySelector('.pa-copy-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      copyRoute(`invite/${inv.code}`);
+    });
     list.appendChild(row);
   });
 }
@@ -3280,30 +3442,42 @@ function activePrompt() {
   return communityPrompts.find(p => p.id === currentCommunity.activePromptId) || communityPrompts.find(p => p.active);
 }
 
-async function openCommunityRoom() {
+async function openCommunityRoom(updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
+  if (roomOpen) return;
+  roomOpen = true;   // claimed before the awaits so two fast clicks can't both load the room
   closeFlatView();
   closeAlbums();
   closePeople();
   closeRecap();
+  closeAdminPanel();
   if (detail.style.display === 'block') closeProject();
   await refreshCurrentCommunity();
   await loadCommunityExtras();
   renderCommunityRoom();
-  roomOpen = true;
   communityRoomEl.style.display = 'block';
+  syncSphereChrome();
   communityRoomEl.setAttribute('aria-hidden', 'false');
   communityRoomEl.scrollTop = 0;
-  gsap.fromTo(communityRoomEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut' });
+  if (updateHash) setRoute(communityRoute('room'));
+  // overwrite: a re-open during the slide-out must kill that tween, or its onComplete
+  // lands afterwards and hides the room we just reopened.
+  gsap.fromTo(communityRoomEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut', overwrite: true });
 }
 
 function closeCommunityRoom() {
   if (!roomOpen) return;
+  // cleared now, not in onComplete: during the 0.65s slide-out the room is already
+  // closed, and a re-open inside that window must not be swallowed by the guard.
+  roomOpen = false;
+  // match the whole path, not just the kind: switching community closes the old
+  // room while the URL already names the NEW one, and that must not be rewritten.
+  clearRouteIf(communityRoute('room'));
   markSceneDirty();   // wake the sphere so it paints through the reveal
   communityRoomEl.setAttribute('aria-hidden', 'true');
   gsap.to(communityRoomEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
-    onComplete: () => { communityRoomEl.style.display = 'none'; roomOpen = false; },
+    onComplete: () => { communityRoomEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 
@@ -3338,7 +3512,7 @@ function renderCommunityRoom() {
       (onSphere ? LOCATE_PIN_HTML : '') +
       `</span>` +
       `<span>${esc(tileTitle(post.title))}</span>`;
-    tile.addEventListener('click', () => openDetailFor(postToProject(post)));
+    tile.addEventListener('click', () => { closeFocusPages(); openDetailFor(postToProject(post)); });
     wireLocatePin(tile, post.id);
     pinnedWrap.appendChild(tile);
   });
@@ -3356,11 +3530,13 @@ function renderCommunityRoom() {
       (ev.file ? `<img src="${esc(mediaSrc(ev.file))}" alt="">` : `<span class="activity-dot"></span>`) +
       `<span><strong>${esc(label)}</strong><small class="mono dim">@${esc(ev.actor || 'system')} / ${timeAgo(ev.created)}</small></span>`;
     row.addEventListener('click', () => {
+      // close the room only when we actually navigate, so a row whose photo is gone
+      // leaves the user where they are
       if (ev.photoId) {
         const post = communityPosts.find(p => p.id === ev.photoId);
-        if (post) openDetailFor(postToProject(post));
+        if (post) { closeFocusPages(); openDetailFor(postToProject(post)); }
       }
-      else if (ev.albumId) openAlbums(ev.albumId);
+      else if (ev.albumId) { closeFocusPages(); openAlbums(ev.albumId); }
     });
     feed.appendChild(row);
   });
@@ -3417,7 +3593,12 @@ function photoTile(tp, subLabel, onClick) {
     (onSphere ? LOCATE_PIN_HTML : '') +
     `</span>` +
     `<span>${esc(tileTitle(tp.title))}</span>` +
-    `<small class="mono dim recap-tile-sub">@${esc(tp.username || 'unknown')} / ${esc(subLabel)}</small>`;
+    // the count is the reason the tile exists, so it must survive a long username:
+    // the handle truncates, the count never does
+    `<small class="mono dim recap-tile-sub">` +
+      `<span class="rt-user">@${esc(tp.username || 'unknown')}</span>` +
+      `<span class="rt-count">${esc(subLabel)}</span>` +
+    `</small>`;
   tile.addEventListener('click', () => onClick(tp.id));
   wireLocatePin(tile, tp.id);
   return tile;
@@ -3496,7 +3677,11 @@ function renderCommunityMilestones() {
 
 /* a pulse photo tile is a doorway back into the sphere: prefer the local
    cache so the detail view is fully wired, else spin the sphere to it. */
+// the room is z-index 75, above #detail (70) and #albums (60), so it has to get out
+// of the way first or the page opens completely hidden behind it and the click looks
+// dead. mirrors what openRecapPhoto already does.
 function openPulsePhoto(postId) {
+  closeFocusPages();
   const post = communityPosts.find(p => p.id === postId);
   if (post) openDetailFor(postToProject(post));
   else focusCardOnSphere(postId);
@@ -3515,6 +3700,8 @@ function activityLabel(ev) {
 
 async function openRecap(updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
+  if (recapOpen) return;
+  recapOpen = true;   // claimed before the fetch so two fast clicks can't both load the recap
   closeFlatView();
   closeAlbums();
   closePeople();
@@ -3524,23 +3711,25 @@ async function openRecap(updateHash = true) {
   if (detail.style.display === 'block') closeProject();
   let r;
   try { r = await api.call('GET', `/api/communities/${encodeURIComponent(currentCommunity.id)}/recap`); }
-  catch (e) { toast(String(e.message || 'COULD NOT LOAD RECAP').toUpperCase()); return; }
+  catch (e) { recapOpen = false; toast(String(e.message || 'COULD NOT LOAD RECAP').toUpperCase()); return; }
   renderRecap(r);
-  recapOpen = true;
   recapOverlayEl.style.display = 'block';
+  syncSphereChrome();
   recapOverlayEl.setAttribute('aria-hidden', 'false');
   recapOverlayEl.scrollTop = 0;
   if (updateHash) setRoute(communityRoute('recap'));
-  gsap.fromTo(recapOverlayEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut' });
+  // see openCommunityRoom: kills a still-running close tween and its onComplete
+  gsap.fromTo(recapOverlayEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut', overwrite: true });
 }
 
 function closeRecap() {
   if (!recapOpen) return;
+  recapOpen = false;   // see closeCommunityRoom: not in onComplete, or a re-open mid-slide is lost
   markSceneDirty();   // wake the sphere so it paints through the reveal
   recapOverlayEl.setAttribute('aria-hidden', 'true');
   gsap.to(recapOverlayEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
-    onComplete: () => { recapOverlayEl.style.display = 'none'; recapOpen = false; },
+    onComplete: () => { recapOverlayEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 
@@ -3751,24 +3940,32 @@ function currentViewRestorer() {
 let adminReturn = null;   // restorer for the view to return to when admin closes
 async function openAdminPanel() {
   if (!currentCommunity || !(isCommunityAdmin() || isAdminProfile())) return;
+  if (adminOpen) return;   // claimed before the awaits so two fast clicks can't both render the roster
   adminReturn = currentViewRestorer();   // remember the actual current view
   closeCommunityRoom();
   closeRecap();
   adminOpen = true;
+  // shown after the awaits, as openCommunityRoom does: a close tween running when
+  // we started would otherwise land its display:none on the panel we just revealed.
+  await renderAdminPanel();
   communityAdminEl.style.display = 'block';
+  syncSphereChrome();
   communityAdminEl.setAttribute('aria-hidden', 'false');
   communityAdminEl.scrollTop = 0;
-  await renderAdminPanel();
-  gsap.fromTo(communityAdminEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut' });
+  // see openCommunityRoom: kills a still-running close tween and its onComplete
+  gsap.fromTo(communityAdminEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.75, ease: 'power4.inOut', overwrite: true });
 }
 
 function closeAdminPanel() {
   if (!adminOpen) return;
+  // cleared now, not in onComplete: during the slide-out the panel is already
+  // closed, and a re-open inside that window must not be swallowed by the guard.
+  adminOpen = false;
   markSceneDirty();   // wake the sphere so it paints through the reveal
   communityAdminEl.setAttribute('aria-hidden', 'true');
   gsap.to(communityAdminEl, {
     yPercent: 100, duration: 0.65, ease: 'power3.inOut',
-    onComplete: () => { communityAdminEl.style.display = 'none'; adminOpen = false; },
+    onComplete: () => { communityAdminEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 
@@ -4079,7 +4276,7 @@ document.getElementById('auth-home').addEventListener('click', async () => {
 });
 document.getElementById('invite-login').addEventListener('click', () => { if (me) showCommunityHub(); else showAuth('login', pendingInviteCode ? { type: 'invite', code: pendingInviteCode } : null); });
 document.getElementById('invite-join').addEventListener('click', () => joinInvite(pendingInviteCode));
-communityChip.addEventListener('click', openCommunityRoom);
+communityChip.addEventListener('click', () => openCommunityRoom());
 inviteToolsBtn.addEventListener('click', openAdminPanel);
 recapChip.addEventListener('click', () => openRecap());
 // mobile "More" sheet mirrors the chips CSS hides on phones (community / admin / recap)
@@ -4087,9 +4284,18 @@ if (hudMoreBtn && hudMoreSheet) {
   const closeMore = () => { hudMoreSheet.hidden = true; hudMoreBtn.setAttribute('aria-expanded', 'false'); };
   hudMoreBtn.addEventListener('click', () => { hudMoreSheet.hidden = false; hudMoreBtn.setAttribute('aria-expanded', 'true'); });
   document.getElementById('hud-more-close').addEventListener('click', closeMore);
-  document.getElementById('hs-community').addEventListener('click', () => { closeMore(); openCommunityRoom(); });
+  hsCommunityBtn.addEventListener('click', () => { closeMore(); openCommunityRoom(); });
   hsAdminBtn.addEventListener('click', () => { closeMore(); openAdminPanel(); });
   hsRecapBtn.addEventListener('click', () => { closeMore(); openRecap(); });
+  // tour / surprise / poster have no other door on a phone: their chips are
+  // display:none under 760px, so without these rows the features are unreachable.
+  const sheetRow = (id, run) => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener('click', () => { closeMore(); run(); });
+  };
+  sheetRow('hs-tour', startSphereTour);
+  sheetRow('hs-surprise', surpriseMe);
+  sheetRow('hs-poster', () => (navigator.share ? shareMosaicPoster() : downloadMosaicPoster()));
 }
 if (posterChip) posterChip.addEventListener('click', () => {
   // prefer the native share sheet where it exists (mobile), else save the file
@@ -4113,6 +4319,8 @@ const profileView = document.getElementById('profile-view');
 const peopleSearch = document.getElementById('people-search');
 const peopleGrid = document.getElementById('people-grid');
 const peopleEmpty = document.getElementById('people-empty');
+const peopleInviteBtn = document.getElementById('people-invite');
+const peopleInviteAsk = document.getElementById('people-invite-ask');
 const profileEditForm = document.getElementById('profile-edit');
 const profileEditBtn = document.getElementById('profile-edit-btn');
 const logoutBtn = document.getElementById('logout-btn');
@@ -4122,36 +4330,64 @@ let viewingProfile = null;
 
 function openPeople(username, updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
-  closeRecap();
+  // #flat-view, #people, #albums and #atlas share z-index 60, so paint order falls
+  // back to DOM order: without closing the siblings a profile opened from a comment
+  // or a liker row renders underneath whatever page is already up.
+  closeFlatView();
+  closeAlbums();
   closeAtlas();
+  closeRecap();
   setNav('people');
   if (peopleOpen) { if (username) showProfile(username, updateHash); return; }
   peopleOpen = true;
   peopleEl.style.display = 'block';
+  syncSphereChrome();
   peopleEl.setAttribute('aria-hidden', 'false');
   peopleEl.scrollTop = 0;
   showPeopleList(!username);
-  gsap.fromTo(peopleEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut' });
+  gsap.fromTo(peopleEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut', overwrite: true });
   loadPeople().then(() => { if (username) showProfile(username, updateHash); });
 }
 
 function closePeople() {
   if (!peopleOpen) return;
+  // flag cleared now, not in onComplete: during the slide-out the page is already
+  // closed, and a re-open inside that window must not be swallowed by the guard.
+  peopleOpen = false;
   markSceneDirty();   // wake the sphere so it paints through the reveal
   if (viewingProfile) clearRouteIf(profileRoute(viewingProfile.username));
   if (!albumsOpen) setNav('gallery');
   peopleEl.setAttribute('aria-hidden', 'true');
   gsap.to(peopleEl, {
     yPercent: 100, duration: 0.7, ease: 'power3.inOut',
-    onComplete: () => { peopleEl.style.display = 'none'; peopleOpen = false; },
+    onComplete: () => { peopleEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 
 async function loadPeople() {
   try { allUsers = await api.call('GET', '/api/users'); }
   catch { allUsers = []; }
+  renderPeopleInvite();
   renderPeople();
 }
+
+/* inviting is the one thing People was missing. admins get the button; everyone
+   else gets the owner's name to ask - never an invite code or link. */
+function renderPeopleInvite() {
+  const canInvite = !!currentCommunity && (isCommunityAdmin() || isAdminProfile());
+  peopleInviteBtn.hidden = !canInvite;
+  peopleInviteAsk.hidden = canInvite || !currentCommunity;
+  if (peopleInviteAsk.hidden) return;
+  const owner = currentCommunity.owner || '';
+  const link = document.createElement('button');
+  link.type = 'button';
+  link.className = 'inline-link';
+  link.textContent = '@' + owner.toUpperCase();
+  link.addEventListener('click', () => showProfile(owner));
+  peopleInviteAsk.textContent = 'ASK ';
+  peopleInviteAsk.append(link, ' FOR AN INVITE LINK');
+}
+peopleInviteBtn.addEventListener('click', openInviteTools);
 
 function renderPeople() {
   const q = peopleSearch.value.trim().toLowerCase();
@@ -4275,24 +4511,28 @@ function openAtlas() {
   if (atlasOpen) return;
   atlasOpen = true;
   atlasEl.style.display = 'block';
+  syncSphereChrome();
   atlasEl.setAttribute('aria-hidden', 'false');
   atlasEl.scrollTop = 0;
   atlasGrid.innerHTML = '';
   atlasEmpty.hidden = true;
   atlasSub.hidden = true;
-  gsap.fromTo(atlasEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut' });
+  gsap.fromTo(atlasEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut', overwrite: true });
   loadAtlas();
 }
 
 function closeAtlas() {
   if (!atlasOpen) return;
+  // flag cleared now, not in onComplete: during the slide-out the page is already
+  // closed, and a re-open inside that window must not be swallowed by the guard.
+  atlasOpen = false;
   markSceneDirty();   // wake the sphere so it paints through the reveal
   disposeAtlasGlobe();
   if (!peopleOpen && !albumsOpen) setNav('gallery');
   atlasEl.setAttribute('aria-hidden', 'true');
   gsap.to(atlasEl, {
     yPercent: 100, duration: 0.7, ease: 'power3.inOut',
-    onComplete: () => { atlasEl.style.display = 'none'; atlasOpen = false; },
+    onComplete: () => { atlasEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 
@@ -4333,27 +4573,33 @@ function renderAlbumsGrid(gridEl, list, emptyEl) {
 
 function openAlbums(albumId, updateHash = true) {
   if (!currentCommunity) { showCommunityHub(); return; }
-  closeRecap();
+  closeFlatView();
+  closePeople();
   closeAtlas();
+  closeRecap();
   setNav('albums');
   if (albumsOpen) { albumId ? showAlbum(albumId, updateHash) : showAlbumsList(); return; }
   albumsOpen = true;
   albumsEl.style.display = 'block';
+  syncSphereChrome();
   albumsEl.setAttribute('aria-hidden', 'false');
   albumsEl.scrollTop = 0;
   showAlbumsList(!albumId);
-  gsap.fromTo(albumsEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut' });
+  gsap.fromTo(albumsEl, { yPercent: 100, y: 0 }, { yPercent: 0, y: 0, duration: 0.8, ease: 'power4.inOut', overwrite: true });
   loadAlbums().then(() => { if (albumId) showAlbum(albumId, updateHash); });
 }
 function closeAlbums() {
   if (!albumsOpen) return;
+  // flag cleared now, not in onComplete: during the slide-out the page is already
+  // closed, and a re-open inside that window must not be swallowed by the guard.
+  albumsOpen = false;
   markSceneDirty();   // wake the sphere so it paints through the reveal
   if (viewingAlbum) clearRouteIf(albumRoute(viewingAlbum.album.id));
   if (!peopleOpen) setNav('gallery');
   albumsEl.setAttribute('aria-hidden', 'true');
   gsap.to(albumsEl, {
     yPercent: 100, duration: 0.7, ease: 'power3.inOut',
-    onComplete: () => { albumsEl.style.display = 'none'; albumsOpen = false; },
+    onComplete: () => { albumsEl.style.display = 'none'; syncSphereChrome(); },
   });
 }
 function showAlbumsList(clearHash = true) {
@@ -4875,9 +5121,6 @@ function openUpload() {
   if (!currentCommunity) { showCommunityHub(); return; }
   uploadErr.textContent = '';
   document.getElementById('upload-year').value = new Date().getFullYear();
-  if (!document.getElementById('upload-client').value) {
-    document.getElementById('upload-client').value = me.displayName;
-  }
   getUploadScopes = buildScopeChips(document.getElementById('upload-scopes'), ['PHOTO']);
   document.getElementById('upload-place').value = '';
   resetUploadPlace('', null);   // fresh upload: never inherit a prior photo's picked location
@@ -5001,7 +5244,6 @@ uploadSubmit.addEventListener('click', async () => {
         image: item.data,
         layout: uploadLayout.value,
         year: document.getElementById('upload-year').value,
-        client: document.getElementById('upload-client').value.trim(),
         place: document.getElementById('upload-place').value.trim(),
         ...(uploadGeo || {}),
         caption: document.getElementById('upload-caption').value.trim(),
@@ -5034,7 +5276,9 @@ uploadSubmit.addEventListener('click', async () => {
 /* ============================================================
    SHAREABLE LINKS / HASH ROUTER
    ============================================================ */
-let mutedHash = '';
+// null, not '': at the root location.hash IS '', so an empty sentinel makes the
+// guard below swallow the back-hop that returns to it.
+let mutedHash = null;
 
 function routePath() {
   const raw = (location.hash || '').replace(/^#\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '');
@@ -5053,7 +5297,7 @@ function setRoute(path) {
   if (location.hash === next) return;
   mutedHash = next;
   location.hash = next;
-  setTimeout(() => { if (mutedHash === next) mutedHash = ''; }, 80);
+  setTimeout(() => { if (mutedHash === next) mutedHash = null; }, 80);
 }
 
 function replaceRoute(path) {
@@ -5115,12 +5359,20 @@ async function copyRoute(path) {
   }
 }
 
+/* the three full-screen focus pages. no route branch except recap/room wants any
+   of them left open, and none of them used to be closed on a back-button hop. */
+function closeFocusPages() {
+  if (roomOpen) closeCommunityRoom();
+  if (adminOpen) closeAdminPanel();
+  if (recapOpen) closeRecap();
+}
+
 let hashRouteSeq = 0;
 async function handleHashRoute() {
   // route generation: if a newer hashchange fires while we await, abandon this
   // run so overlapping navigations can't land on the wrong overlay/photo.
   const g = ++hashRouteSeq;
-  if (location.hash === mutedHash) { mutedHash = ''; return; }
+  if (location.hash === mutedHash) { mutedHash = null; return; }
   const parts = routeParts();
   const [kind, id] = parts;
   if (!kind) {
@@ -5129,6 +5381,7 @@ async function handleHashRoute() {
     if (albumsOpen) closeAlbums();
     if (peopleOpen) closePeople();
     if (atlasOpen) closeAtlas();
+    closeFocusPages();
     if (me) await showCommunityHub(false);
     else await showLanding(false);
     return;
@@ -5157,6 +5410,7 @@ async function handleHashRoute() {
       if (albumsOpen) closeAlbums();
       if (peopleOpen) closePeople();
       if (atlasOpen) closeAtlas();
+      closeFocusPages();
       setNav('gallery');
       return;
     }
@@ -5164,6 +5418,7 @@ async function handleHashRoute() {
       if (detail.style.display === 'block') closeProject();
       closeAlbums();
       closePeople();
+      closeFocusPages();
       openSaved();
       return;
     }
@@ -5175,11 +5430,20 @@ async function handleHashRoute() {
       await openRecap(false);
       return;
     }
+    if (view === 'room') {
+      closeFlatView();
+      closeAlbums();
+      closePeople();
+      closeAtlas();
+      await openCommunityRoom(false);
+      return;
+    }
     if (view === 'photo' && itemId) {
       closeFlatView();
       closeAlbums();
       closePeople();
       closeAtlas();
+      closeFocusPages();
       let post = communityPosts.find(p => p.id === itemId);
       if (!post) {
         await refreshCommunity();
@@ -5195,6 +5459,7 @@ async function handleHashRoute() {
       if (detail.style.display === 'block') closeProject();
       closeFlatView();
       closeAlbums();
+      closeFocusPages();
       openPeople(itemId, false);
       return;
     }
@@ -5202,6 +5467,7 @@ async function handleHashRoute() {
       if (detail.style.display === 'block') closeProject();
       closeFlatView();
       closePeople();
+      closeFocusPages();
       openAlbums(itemId, false);
       return;
     }
@@ -5215,6 +5481,7 @@ async function handleHashRoute() {
     closeAlbums();
     closePeople();
     closeAtlas();
+    closeFocusPages();
     let post = communityPosts.find(p => p.id === id);
     if (!post) {
       await refreshCommunity();
@@ -5232,6 +5499,7 @@ async function handleHashRoute() {
     if (detail.style.display === 'block') closeProject();
     closeFlatView();
     closeAlbums();
+    closeFocusPages();
     openPeople(id, false);
     return;
   }
@@ -5241,6 +5509,7 @@ async function handleHashRoute() {
     if (detail.style.display === 'block') closeProject();
     closeFlatView();
     closePeople();
+    closeFocusPages();
     openAlbums(id, false);
     return;
   }
@@ -5250,6 +5519,7 @@ async function handleHashRoute() {
     if (detail.style.display === 'block') closeProject();
     closeAlbums();
     closePeople();
+    closeFocusPages();
     openSaved();
     return;
   }

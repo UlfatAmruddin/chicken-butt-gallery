@@ -137,12 +137,11 @@
   </svg>
 </a>
 
+<div id="hud-right">
 <div id="sound-wrap">
   <button id="sound" class="mono">&#9646;&#9646;&#9646; SOUND</button>
   <input id="volume" type="range" min="0" max="100" value="60" aria-label="Volume">
 </div>
-
-<div id="hud-right">
 <button id="notif-btn" aria-label="Notifications" title="Notifications" hidden>
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -164,8 +163,11 @@
 <button id="recap-chip" class="mono" hidden>Recap</button>
 <button id="poster-chip" class="mono" hidden title="Save the whole sphere as a shareable mosaic poster" aria-label="Save the whole sphere as a shareable mosaic poster">Poster</button>
 <button id="surprise-chip" class="mono" hidden title="Jump to a random memory (R)" aria-label="Surprise me: spin the sphere to a random memory">Surprise</button>
+<button id="shortcuts-chip" class="mono" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
 <span id="poster-building" class="mono dim" hidden>BUILDING POSTER&hellip;</span>
 </div>
+<!-- escape hatch: the sphere wraps on both axes, so a long drag can land on empty sky -->
+<button id="recentre-btn" class="mono" hidden>BACK TO CENTRE</button>
 
 <!-- mobile: the top-left chips are hidden on phones; this opens them as a sheet -->
 <button id="hud-more-btn" class="mono" aria-label="More community actions" aria-expanded="false" hidden>&#8942;&nbsp;More</button>
@@ -173,6 +175,9 @@
   <button id="hs-community" class="mono">View / switch community</button>
   <button id="hs-admin" class="mono" hidden>Admin &amp; invite tools</button>
   <button id="hs-recap" class="mono">Recap</button>
+  <button id="hs-tour" class="mono">Play a tour</button>
+  <button id="hs-surprise" class="mono">Surprise me</button>
+  <button id="hs-poster" class="mono">Save a poster</button>
   <button id="hud-more-close" class="mono">Close</button>
 </div>
 
@@ -184,13 +189,6 @@
   </button>
   <button id="memory-ribbon-close" type="button" aria-label="Dismiss">&#10005;</button>
 </div>
-
-<button id="settings-btn" class="circle-btn" aria-label="Settings" title="Display settings">
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/>
-    <path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 4.2l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.3"/>
-  </svg>
-</button>
 
 <div id="settings-panel" hidden>
   <div class="sp-head mono">DISPLAY SETTINGS</div>
@@ -214,14 +212,21 @@
 </div>
 
 <div class="view-toggles">
-  <button class="circle-btn active" id="view-grid" aria-label="Grid view">
+  <button class="circle-btn" id="view-grid" aria-label="Grid view">
     <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/></svg>
   </button>
   <button class="circle-btn" id="view-list" aria-label="List view">
     <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/><rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor"/></svg>
   </button>
   <button class="circle-btn" id="upload-btn" aria-label="Post a photo" title="Post a photo">
-    <svg width="16" height="16" viewBox="0 0 16 16"><rect x="7" y="1" width="2" height="14" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/></svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="7" y="1" width="2" height="14" rx="1" fill="currentColor"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/></svg>
+    <span>Post</span>
+  </button>
+  <button class="circle-btn" id="settings-btn" aria-label="Settings" title="Display settings">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 4.2l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.3"/>
+    </svg>
   </button>
 </div>
 
@@ -252,40 +257,10 @@
       </div>
       <button class="mono" id="d-client-top"></button>
     </div>
-    <h1 id="d-title"><span id="d-title-inner"></span></h1>
-    <div class="d-meta mono">
-      <div><span class="lbl">CLIENT</span><span id="d-client"></span></div>
-      <div><span class="lbl">YEAR</span><span id="d-year"></span></div>
-      <div><span class="lbl">SCOPE</span><span id="d-tags"></span></div>
-      <div id="d-place-row" hidden><span class="lbl">PLACE</span><span id="d-place"></span></div>
-    </div>
-    <div id="d-owner" class="mono" hidden>
-      <button id="d-edit-btn" class="mono">EDIT PHOTO</button>
-      <button id="d-add-album-btn" class="mono">ADD TO ALBUM</button>
-      <button id="d-pin-btn" class="mono" hidden>PIN PHOTO</button>
-      <button id="d-spotlight-btn" class="mono" hidden>FEATURE THIS PHOTO</button>
-      <button id="d-delete-btn" class="mono danger">DELETE PHOTO</button>
-    </div>
-    <form id="d-edit-form" hidden>
-      <div class="pe-row">
-        <label class="mono">TITLE<input id="de-title" maxlength="40"></label>
-        <label class="mono">CLIENT<input id="de-client" maxlength="30"></label>
-        <label class="mono">YEAR<input id="de-year" type="number" min="1900" max="2100"></label>
-      </div>
-      <label class="mono">PLACE<input id="de-place" maxlength="80" placeholder="SEARCH A PLACE (CITY, REGION)&hellip;"></label>
-      <label class="mono">PHOTO BIO<textarea id="de-caption" rows="3" maxlength="300"></textarea></label>
-      <div class="field">
-        <span class="mono">SCOPES - PICK UP TO 3</span>
-        <div id="de-scopes" class="scope-chips"></div>
-      </div>
-      <p id="de-err" class="mono err"></p>
-      <div class="pe-row">
-        <button type="submit" class="pill-white">Save Changes</button>
-        <button type="button" id="de-cancel" class="mono">CANCEL</button>
-      </div>
-    </form>
+    <!-- the photograph leads: title, story, reactions, then the credits block -->
     <figure class="d-hero"><img id="d-img" alt=""><span class="zoom-hint" aria-hidden="true">Scroll to zoom &middot; drag to pan</span></figure>
     <div id="d-filmstrip" class="d-filmstrip" hidden aria-label="Jump to photo"></div>
+    <h1 id="d-title"><span id="d-title-inner"></span></h1>
     <div class="d-cols">
       <p id="d-p1"></p>
       <p id="d-p2"></p>
@@ -299,7 +274,7 @@
         <span class="mono dim" id="d-comment-count">0 COMMENTS</span>
         <button id="d-locate" class="mono share-btn locate-btn" title="Spin the sphere to this photo">FIND ON SPHERE&nbsp;&#9678;</button>
         <button id="d-share" class="mono share-btn">SHARE&nbsp;&#8599;</button>
-        <button id="d-download" class="mono share-btn dl-btn">SAVE&nbsp;&#8595;</button>
+        <button id="d-download" class="mono share-btn dl-btn">DOWNLOAD&nbsp;&#8595;</button>
         <button id="d-cinema" class="mono share-btn cinema-btn" title="Cinema mode (F)">CINEMA&nbsp;&#9634;</button>
         <button id="d-play" class="mono play-btn" aria-pressed="false" title="Play slideshow" hidden>
           <span class="play-ring" aria-hidden="true">
@@ -320,6 +295,36 @@
         <button type="submit" class="pill-white">Post</button>
       </form>
     </section>
+
+    <div class="d-meta mono">
+      <div><span class="lbl">YEAR</span><span id="d-year"></span></div>
+      <div><span class="lbl">TAGS</span><span id="d-tags"></span></div>
+      <div id="d-place-row" hidden><span class="lbl">PLACE</span><span id="d-place"></span></div>
+    </div>
+    <div id="d-owner" class="mono" hidden>
+      <button id="d-edit-btn" class="mono">EDIT PHOTO</button>
+      <button id="d-add-album-btn" class="mono">ADD TO ALBUM</button>
+      <button id="d-pin-btn" class="mono" hidden>PIN PHOTO</button>
+      <button id="d-spotlight-btn" class="mono" hidden>FEATURE THIS PHOTO</button>
+      <button id="d-delete-btn" class="mono danger">DELETE PHOTO</button>
+    </div>
+    <form id="d-edit-form" hidden>
+      <div class="pe-row">
+        <label class="mono">TITLE<input id="de-title" maxlength="40"></label>
+        <label class="mono">YEAR<input id="de-year" type="number" min="1900" max="2100"></label>
+      </div>
+      <label class="mono">PLACE<input id="de-place" maxlength="80" placeholder="SEARCH A PLACE (CITY, REGION)&hellip;"></label>
+      <label class="mono">CAPTION<textarea id="de-caption" rows="3" maxlength="300"></textarea></label>
+      <div class="field">
+        <span class="mono">TAGS - PICK UP TO 3</span>
+        <div id="de-scopes" class="scope-chips"></div>
+      </div>
+      <p id="de-err" class="mono err"></p>
+      <div class="pe-row">
+        <button type="submit" class="pill-white">Save Changes</button>
+        <button type="button" id="de-cancel" class="mono">CANCEL</button>
+      </div>
+    </form>
 
     <div class="d-footer mono">CHICKEN BUTT GALLERY&reg; - ALL RIGHTS RESERVED</div>
   </div>
@@ -382,7 +387,11 @@
     </div>
 
     <div id="people-list">
-      <h1 class="people-title">PEOPLE</h1>
+      <div class="section-head">
+        <h1 class="people-title">PEOPLE</h1>
+        <button id="people-invite" class="pill-white" hidden>Invite</button>
+      </div>
+      <p id="people-invite-ask" class="mono dim" hidden></p>
       <input id="people-search" class="search mono" placeholder="SEARCH USERNAMES&hellip;" autocomplete="off">
       <div id="people-grid"></div>
       <p id="people-empty" class="mono dim" hidden>NO PEOPLE FOUND.</p>
@@ -743,6 +752,7 @@
     <div class="modal-head mono">COMMUNITY INVITES <button id="invite-tools-close" aria-label="Close">&#10005;</button></div>
     <p id="invite-tools-community" class="mono dim"></p>
     <div id="invite-list" class="pick-album-list"></div>
+    <p id="invite-link-note" class="mono dim" hidden></p>
     <p id="invite-list-empty" class="mono dim" hidden>NO ACTIVE INVITES YET.</p>
     <p id="invite-tools-err" class="mono err"></p>
     <button class="pill-white" id="invite-create" type="button">Create Invite Link</button>
@@ -797,7 +807,6 @@
     <label class="mono">TITLE<input id="upload-title" maxlength="40" placeholder="UNTITLED"></label>
     <label class="mono">PLACE<input id="upload-place" maxlength="80" placeholder="SEARCH A PLACE (CITY, REGION)&hellip;"></label>
     <div class="pe-row">
-      <label class="mono">CLIENT<input id="upload-client" maxlength="30" placeholder="YOU / A BRAND"></label>
       <label class="mono">YEAR<input id="upload-year" type="number" min="1900" max="2100"></label>
       <label class="mono">CROP
         <select id="upload-layout">
@@ -808,11 +817,11 @@
       </label>
     </div>
     <div class="field">
-      <span class="mono">SCOPES - PICK UP TO 3</span>
+      <span class="mono">TAGS - PICK UP TO 3</span>
       <div id="upload-scopes" class="scope-chips"></div>
     </div>
     <label class="mono">PROMPT<select id="upload-prompt"><option value="">NO PROMPT</option></select></label>
-    <label class="mono">PHOTO BIO<textarea id="upload-caption" rows="2" maxlength="300" placeholder="Say something about it&hellip;"></textarea></label>
+    <label class="mono">CAPTION<textarea id="upload-caption" rows="2" maxlength="300" placeholder="Say something about it&hellip;"></textarea></label>
     <p id="upload-err" class="mono err"></p>
     <button class="pill-white" id="upload-submit">Post It</button>
   </div>

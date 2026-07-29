@@ -55,7 +55,7 @@ export function initCinema({ getProject, step, isPlaying, togglePlay, isPlayable
     const p = getProject && getProject();
     if (!p) return;
     const src = p.heroSrc || p.src || '';
-    const who = p.community ? '@' + (p.username || '') : (p.client || '');
+    const who = p.username ? '@' + p.username : '';
     const label = [p.title, who, p.year].filter(Boolean).join('  ·  ');
     update(src, label);
   }

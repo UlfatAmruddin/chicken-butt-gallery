@@ -105,6 +105,12 @@ body[data-theme='light'] #community-admin .dim,
 body[data-theme='light'] #recap-overlay .dim,
 body[data-theme='light'] .modal-box .dim { color: var(--text-dim); }
 
+/* destructive controls are markup like class="mono danger", so the .mono remap
+   above was repainting them the same grey as their harmless neighbours. must
+   come after that remap - equal specificity, source order decides. */
+body[data-theme='light'] :is(#detail, #people, #albums, #flat-view, #atlas,
+  #community-room, #community-admin, #recap-overlay, .modal-box) .danger { color: var(--danger); }
+
 /* headings / body copy that are hardcoded #fff or light-grey on the light pages */
 body[data-theme='light'] .people-title,
 body[data-theme='light'] #d-title,
@@ -115,6 +121,28 @@ body[data-theme='light'] .d-meta,
 body[data-theme='light'] .d-cols p,
 body[data-theme='light'] .modal-box h2 { color: var(--text); }
 
+/* the rest of the hardcoded near-white / light-grey ink on the light pages.
+   split by role so light keeps the same emphasis relationship dark has: body
+   copy and resting controls take the dim token, names and numbers take --text. */
+body[data-theme='light'] #detail :is(.c-text, .like-btn, .likers-name, .likers-more),
+body[data-theme='light'] #people :is(#profile-bio, #profile-links a),
+body[data-theme='light'] #albums #album-desc,
+body[data-theme='light'] #shortcuts-overlay .shortcut-row dd,
+body[data-theme='light'] :is(#detail, .modal-box) .scope-chip:not(.active) { color: var(--text-dim); }
+/* the remap above outranks the shared :hover rules, so light needs its own pair
+   or the colour half of the hover feedback never fires. */
+body[data-theme='light'] #detail :is(.like-btn, .likers-name, .likers-more):hover {
+  color: var(--text); text-decoration-color: var(--text);
+}
+body[data-theme='light'] #detail :is(.c-name, .likers-row .lr-name, .c-text .mention, .like-btn.liked, .save-btn.saved),
+body[data-theme='light'] #people .person-card .p-name,
+body[data-theme='light'] #atlas .atlas-name,
+body[data-theme='light'] #community-room .room-big,
+body[data-theme='light'] #recap-overlay .recap-stat .rs-num { color: var(--text); }
+/* the expanded likers list hovers to a near-black row, which would swallow the
+   dark ink the line above just gave its names. */
+body[data-theme='light'] #detail .likers-row:hover { background: var(--panel-bg); }
+
 /* the room hero is NOT a light surface in either theme - it is a cover photo
    under a dark scrim (or #0f0f0f when there is no cover). repainting its text as
    dark ink for light mode put dark type on a dark backdrop. it stays light. */
@@ -123,6 +151,17 @@ body[data-theme='light'] #room-desc { color: #e8e8e8; }
 body[data-theme='light'] #room-welcome { color: #c4c4c4; }
 body[data-theme='light'] .room-hero .mono,
 body[data-theme='light'] .room-hero .dim { color: #cfcfcf; }
+/* the profile name is the same trap but cannot be solved with white ink: the head
+   is a wrapping flex row, so a long display name or a narrow window drops the name
+   clean off the cover onto the light page. it keeps var(--text) from the rule
+   above, and the cover fades into the page surface behind the overlap band so the
+   dark ink reads wherever it lands. dark theme needs neither. */
+body[data-theme='light'] .profile-cover { position: relative; }
+body[data-theme='light'] .profile-cover::after {
+  content: ''; position: absolute; inset: auto 0 0 0; height: 96px;
+  border-radius: 0 0 16px 16px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--overlay-bg) 55%);
+}
 
 /* the room / admin / recap pages switch their page background to the light
    surface, but their panels were hardcoded near-black, so light mode showed dark
@@ -190,6 +229,24 @@ body[data-theme='light'] #settings-panel input[type=range] { background: #c9c9d2
    need the dim ink token like every other label there. */
 body[data-theme='light'] .modal-box label,
 body[data-theme='light'] .modal-box .field > span { color: var(--text-dim); }
+
+/* ids and element-scoped rules that outrank the remaps above, so they need naming
+   explicitly. all of these were light-on-light in the light theme. */
+body[data-theme='light'] .modal-box h2,
+body[data-theme='light'] .modal-box .ghost-pill,
+body[data-theme='light'] #drop-zone { color: var(--text); }
+body[data-theme='light'] .modal-box .ghost-pill { border-color: var(--border); }
+body[data-theme='light'] #atlas .atlas-pin,
+body[data-theme='light'] #detail .play-glyph { color: var(--text); }
+/* the room hero is a cover photo under a dark scrim in BOTH themes, so its label
+   keeps light ink. same id weight as the #community-room remap above, declared
+   later, so this is the one that wins. */
+body[data-theme='light'] #community-room #room-role { color: #d4d4d4; }
+/* these three keep the dark "observatory" box in both themes, so light-theme ink
+   would be invisible on them - hold the dark treatment instead. */
+body[data-theme='light'] :is(#auth, #community-modal, #enter-invite-modal) :is(input, textarea) { color: #fff; }
+body[data-theme='light'] :is(#community-modal, #enter-invite-modal) .modal-box { color: #eaeaea; }
+body[data-theme='light'] :is(#community-modal, #enter-invite-modal) .modal-head button { color: #fff; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -284,9 +341,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .logo:hover { transform: rotate(-8deg) scale(1.06); }
 
+/* lives inside #hud-right so it packs from the right edge: centred, it collided
+   with the left-anchored #hud-chips row as soon as that row grew. */
 #sound-wrap {
-  position: fixed; top: 30px; left: 50%; transform: translateX(-50%);
-  z-index: 10;
   display: flex; align-items: center; gap: 12px;
 }
 /* every other floating HUD control is a bordered pill; this one was bare text,
@@ -327,8 +384,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 /* ---------- bottom HUD ---------- */
+/* above the browse overlays (z 60) so Post stays reachable from every list page,
+   but UNDER the nav (65): the rail and the centred nav bar overlap on mid-width
+   desktops, and the nav must keep its clicks. Still under detail (70) and the
+   focus pages (75). */
 .view-toggles {
-  position: fixed; bottom: 22px; left: 22px; z-index: 10;
+  position: fixed; bottom: 22px; left: 22px; z-index: 64;
   display: flex; gap: 8px;
 }
 .circle-btn {
@@ -341,12 +402,25 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .circle-btn:hover { transform: scale(1.08); }
 .circle-btn.active { background: #fff; color: #000; }
 
-/* settings button (above the grid button) + panel */
-/* the gear floated on its own row above the grid/list/post cluster. it belongs
-   on the same rail as its peers - they are all 50px circle buttons. */
-#settings-btn { position: fixed; bottom: 22px; left: 196px; z-index: 10; }
+/* the gear is a disclosure, not a view mode: the white .active fill would make it
+   a second white control right beside the Post pill. Ring it instead. */
+#settings-btn.active { background: rgba(38,38,38,0.86); color: #fff; box-shadow: 0 0 0 1px #fff; }
+
+/* the primary action on the rail: a labelled white pill, so it can never read
+   as a grid toggle stuck in its .active state. */
+#upload-btn {
+  width: auto; height: 50px; padding: 0 20px; border-radius: 999px;
+  background: #fff; color: #000;
+  display: flex; align-items: center; gap: 8px;
+  font-family: Inter, sans-serif; font-size: 15px; font-weight: 500;
+}
+/* the white pill sits on a near-white overlay in light mode; a hairline keeps
+   its edge readable there without touching the dark default. */
+body[data-theme='light'] #upload-btn { border: 1px solid var(--border); }
+
+/* settings panel; the gear itself is a plain .circle-btn in the rail flex row */
 #settings-panel {
-  position: fixed; bottom: 84px; left: 22px; z-index: 11;
+  position: fixed; bottom: 84px; left: 22px; z-index: 66;
   width: 248px;
   background: var(--surface);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -415,9 +489,11 @@ body[data-theme='light'] #settings-panel .sp-seg button.active { color: var(--su
 
 /* an 86px circle was the only control of that size or shape in the app and sat
    on the same rail as the 50px .circle-btn cluster. matching the pill language
-   of .pill-nav puts the bottom rail into one family. */
+   of .pill-nav puts the bottom rail into one family. z sits in the same band as
+   .view-toggles: at z 10 it was occluded by the browse overlays yet still
+   focusable, so keyboard users could open a panel they could not see. */
 #filter-btn {
-  position: fixed; bottom: 22px; right: 22px; z-index: 10;
+  position: fixed; bottom: 22px; right: 22px; z-index: 64;
   height: 50px; padding: 0 24px; border-radius: 999px;
   background: rgba(26,26,26,0.9);
   color: #fff; font-size: 14px; font-weight: 500;
@@ -427,7 +503,7 @@ body[data-theme='light'] #settings-panel .sp-seg button.active { color: var(--su
 #filter-btn:hover { transform: translateY(-2px); border-color: #4a4a4a; background: rgba(38,38,38,0.95); }
 
 #filter-panel {
-  position: fixed; bottom: 84px; right: 22px; z-index: 11;
+  position: fixed; bottom: 84px; right: 22px; z-index: 66;
   width: 290px;
   background: var(--surface);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -435,6 +511,14 @@ body[data-theme='light'] #settings-panel .sp-seg button.active { color: var(--su
   border-radius: 16px;
   padding: 18px;
 }
+/* the labelled Post pill widened the rail past the centred nav bar: below ~1120px
+   the two share the same 50px row. lift the whole bottom row above the nav band
+   there, the way the phone layout already does, so neither has to win on z-order. */
+@media (min-width: 761px) and (max-width: 1120px) {
+  .view-toggles, #filter-btn { bottom: 90px; }
+  #settings-panel, #filter-panel { bottom: 152px; }
+}
+
 .fp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: var(--text-dim); }
 #fp-clear { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .fp-tags { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -560,7 +644,8 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 .entry-mode #recap-chip,
 .entry-mode #poster-chip,
 .entry-mode #poster-building,
-.entry-mode #surprise-chip {
+.entry-mode #surprise-chip,
+.entry-mode #shortcuts-chip {
   opacity: 0;
   pointer-events: none;
 }
@@ -603,14 +688,16 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 }
 #d-title span { display: block; will-change: transform; }
 
+/* the credits block now closes the page, under the comments, so it carries its
+   own top gap instead of inheriting one from the title above it. */
 .d-meta {
-  display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 24px;
-  border-top: 1px solid #1f1f1f; padding-top: 18px;
+  display: grid; grid-template-columns: 1fr 2fr; gap: 24px;
+  border-top: 1px solid #1f1f1f; margin-top: 54px; padding-top: 18px;
   color: #d2d2d2;
 }
-/* CLIENT / YEAR / SCOPE / PLACE field labels: #616161 measured 3.29:1, the worst
+/* YEAR / TAGS / PLACE field labels: #616161 measured 3.29:1, the worst
    contrast in the app. */
-.d-meta .lbl { display: block; color: #8d8d8d; margin-bottom: 7px; }
+.d-meta .lbl { display: block; color: var(--text-dim); margin-bottom: 7px; }
 #d-place-row { grid-column: 1 / -1; }
 .place-chip {
   display: inline-flex; align-items: center; gap: 7px;
@@ -645,7 +732,7 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
    instead of a void, and landscape shots still get plenty of room. */
 .d-hero {
   position: relative;
-  margin: 28px auto; max-width: 1000px;
+  margin: 20px auto 28px; max-width: 1000px;
   height: min(62vh, 620px); overflow: hidden; background: #0d0d0d;
   border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
@@ -729,7 +816,9 @@ body[data-theme='light'] #filter-panel .fp-tag.active {
 
 /* ---------- reactions & comments ---------- */
 .d-social { max-width: 720px; margin-top: 54px; }
-.d-react { display: flex; align-items: center; gap: 18px; padding-bottom: 18px; border-bottom: 1px solid #1f1f1f; }
+/* eight controls never fit the 720px column on one line - unwrapped they spilled
+   past the block (and off-screen on a phone), so the row wraps. */
+.d-react { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding-bottom: 18px; border-bottom: 1px solid #1f1f1f; }
 .like-btn {
   display: inline-flex; align-items: center; gap: 8px;
   color: #cfcfcf; font-size: 16px; font-weight: 500;
@@ -1025,7 +1114,9 @@ input[type=color]::-moz-color-swatch { border: none; border-radius: 5px; }
 /* top-right HUD: notification bell + @username chip, packed from the right edge
    so the chip sits in the corner and the bell never drifts with username length */
 #hud-right {
-  position: fixed; top: 22px; right: 22px; z-index: 10;
+  /* above #hud-chips: between ~761 and ~1047px the two fixed rows overlap and the
+     chip row was stealing clicks from the notifications bell. */
+  position: fixed; top: 22px; right: 22px; z-index: 12;
   display: flex; align-items: center; gap: 12px;
 }
 /* the username was bare text pressed against the viewport edge next to a
@@ -1095,6 +1186,32 @@ input[type=color]::-moz-color-swatch { border: none; border-radius: 5px; }
 }
 #surprise-chip::before { content: "\2726\00A0"; color: #7fdcff; }   /* small sparkle */
 #community-chip:hover, #invite-tools-btn:hover, #tour-chip:hover, #recap-chip:hover, #poster-chip:hover, #surprise-chip:hover { color: #fff; }
+#shortcuts-chip { color: #cfcfcf; padding-left: 13px; padding-right: 13px; }
+#shortcuts-chip:hover { color: #fff; }
+
+/* Escape hatch for a viewer who has dragged onto empty sphere. A sibling of
+   #hud-chips, not a child: every chip in that row is display:none on phones,
+   and this control matters most there. Sits above .pill-nav, clear of the
+   bottom-left .view-toggles and bottom-right #filter-btn at every breakpoint. */
+#recentre-btn {
+  position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%); z-index: 66;
+  padding: 10px 18px;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  font-size: 12px; line-height: 1; letter-spacing: .03em;
+  transition: border-color .2s, background .2s;
+}
+#recentre-btn:hover { border-color: var(--text-dim); }
+/* this floats over the dark 3D scene, not over a themed page, so it must keep
+   the dark-HUD treatment its neighbours use rather than following the theme. */
+body[data-theme='light'] #recentre-btn {
+  background: rgba(20,20,20,0.82); border-color: #333; color: #cfcfcf;
+}
+body[data-theme='light'] #recentre-btn:hover { border-color: #6f6f6f; color: #fff; }
+/* the mid-width breakpoint lifts the bottom rail to 90px; clear it there too */
+@media (min-width: 761px) and (max-width: 1120px) {
+  #recentre-btn { bottom: 156px; }
+}
 #tour-chip:hover::before, #poster-chip:hover::before, #surprise-chip:hover::before { color: #b8ecff; }
 
 /* ---------- notifications inbox ---------- */
@@ -1187,8 +1304,25 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
    secondary action - it does not need to stay a 92px empty target. */
 #upload-modal:has(#upload-preview:not([hidden])) #drop-zone { height: 44px; font-size: 11px; }
 /* keep the submit button reachable: the modal scrolls at 90dvh and "Post It"
-   was the last child, so on a short window it sat below the fold. */
-#upload-submit { position: sticky; bottom: 0; z-index: 1; }
+   was the last child, so on a short window it sat below the fold. Sticky alone
+   left it floating over the fields, which slid visibly past its rounded edges,
+   so it gets a real footer band: the box's ::after painted full-bleed behind it
+   (last in tree order, hence the lower z-index; the negative top margin keeps it
+   out of the flow so no field moves). The band also supplies the box's bottom
+   padding, and the button's margin-bottom matches its sticky offset - a sticky
+   element is held inside the scrollport inset by that padding, so with either
+   missing, band and button jump 22px at the end of the scroll and the inline
+   error above the button lands underneath. */
+#upload-modal .modal-box { padding-bottom: 0; }
+#upload-submit { position: sticky; bottom: 22px; z-index: 1; margin: 20px 0 22px; }
+#upload-modal .modal-box::after {
+  content: ''; display: block;
+  position: sticky; bottom: 0; z-index: 0;
+  pointer-events: none;   /* purely decorative - do not eat taps on the fields it paints over */
+  height: 83px; margin: -83px -22px 0;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
 #upload-preview {
   width: 100%; height: 180px; object-fit: cover;
   border-radius: 10px; margin-bottom: 14px; display: block;
@@ -1273,6 +1407,18 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
   text-transform: uppercase; color: #fff;
   margin: 26px 0 24px;
 }
+/* the only .people-title rendered from user data - a 60-char community name with
+   no spaces would otherwise push the whole admin panel wider than the viewport. */
+#admin-title { overflow-wrap: anywhere; }
+#people-invite-ask { margin: 0 0 24px; }
+/* a name inside a sentence: inherits the surrounding mono/dim run, underlined so
+   it still reads as somewhere to go. */
+.inline-link {
+  font: inherit; letter-spacing: inherit; color: inherit;
+  padding: 0; text-decoration: underline; text-underline-offset: 4px;
+}
+.inline-link:hover { color: var(--text); }
+
 .search {
   max-width: 520px;
   background: #0e0e0e;
@@ -1466,6 +1612,23 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
 .pick-album-row .pa-count { margin-left: auto; color: #7a7a7a; font-family: 'Space Mono', monospace; font-size: 11px; }
 .pick-album-row .pa-copy { margin-left: auto; color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 
+/* invite rows carry a whole URL. Both children took margin-left:auto, so the row
+   could not shrink the link and COPY was pushed past the modal edge. Scoped to
+   .invite-row: the album picker shares .pick-album-row and must not move. */
+.pick-album-row.invite-row .pa-copy {
+  flex: 1 1 auto; min-width: 0; margin-left: 0; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* .mono in the selector only to outrank the light-theme `.modal-box .mono` dim */
+.pick-album-row.invite-row .pa-copy-btn.mono {
+  flex: none; margin-left: 12px; padding: 7px 13px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface-2); color: var(--text);
+  font-size: 11px; letter-spacing: .06em;
+  transition: border-color .2s;
+}
+.pick-album-row.invite-row .pa-copy-btn.mono:hover { border-color: var(--text-dim); }
+
 #album-actions { display: inline-flex; gap: 20px; }
 .share-btn { color: #cfcfcf; }
 .share-btn:hover { color: #fff; }
@@ -1615,23 +1778,31 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
 .flat-card .fc-media { position: relative; display: block; }
 .flat-card .fc-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; background: #111; }
 .flat-card .fc-body { display: block; padding: 11px 13px; }
-.flat-card .fc-title { color: #fff; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* min-width:0 is what lets the ellipsis engage: in list mode .fc-body is a flex
+   row, so without it the title keeps its full intrinsic width and shoves the
+   like / comment counts out past the card edge. */
+.flat-card .fc-title { display: block; color: #fff; font-weight: 500; font-size: 14px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the meta row must never wrap: without nowrap a long @username squeezes the
    count items below their content width, so "2 COMMENTS" breaks onto a second
    line and that one card grows taller than its neighbours in the same row. */
 .flat-card .fc-sub { margin-top: 4px; display: flex; gap: 12px; align-items: center; min-width: 0; }
 .flat-card .fc-sub > * { white-space: nowrap; }
 .flat-card .fc-sub .fc-user { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.fc-counts { margin-left: auto; display: flex; gap: 10px; color: #8d8d8d; flex: none; }
+.fc-counts { margin-left: auto; display: flex; gap: 10px; color: var(--text-dim); flex: none; }
 
 /* list mode */
 .flat-grid.list { grid-template-columns: 1fr; gap: 8px; max-width: 900px; }
 .flat-grid.list .flat-card { display: flex; align-items: center; }
 .flat-grid.list .fc-media { width: 86px; height: 64px; flex: none; }
 .flat-grid.list .fc-img { width: 86px; height: 64px; aspect-ratio: auto; flex: none; }
-.flat-grid.list .fc-body { flex: 1; display: flex; align-items: center; gap: 16px; }
+.flat-grid.list .fc-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 16px; }
 .flat-grid.list .fc-sub { margin-top: 0; }
 .flat-grid.list .locate-pin { width: 26px; height: 26px; font-size: 13px; top: 5px; right: 5px; }
+/* on a phone one row cannot hold the title plus @user plus both counts, and the
+   counts do not shrink - they were the part that spilled past the card edge. */
+@media (max-width: 560px) {
+  .flat-grid.list .fc-body { flex-direction: column; align-items: stretch; gap: 4px; }
+}
 
 /* ---------- places atlas ---------- */
 #atlas {
@@ -1737,6 +1908,9 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
   text-transform: uppercase;
 }
 .room-hero p { max-width: 720px; }
+/* sits on the cover photo rather than a panel, so the dim label tone is too weak
+   here even with the scrim - lift it to match the rest of the hero text. */
+#room-role { color: #d4d4d4; }
 #room-desc { color: #d4d4d4; font-size: 18px; line-height: 1.55; margin-top: 14px; }
 #room-welcome { color: #a9a9a9; font-size: 15px; line-height: 1.65; margin-top: 10px; }
 .room-grid, .admin-grid {
@@ -1805,6 +1979,7 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
 /* ---- community recap ("wrapped" digest) ---- */
 .recap-hero {
   margin: 40px 0 22px;
+  overflow: hidden;   /* .room-hero already does this; a long unbroken name scrolled the page */
   border: 1px solid #1f1f1f;
   border-radius: 16px;
   padding: 28px;
@@ -1857,9 +2032,12 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
 }
 .recap-tile .recap-tile-sub {
-  display: block; padding: 0 9px 9px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; gap: 6px; align-items: baseline; padding: 0 9px 9px;
+  white-space: nowrap; overflow: hidden;
 }
+.recap-tile .rt-user { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.recap-tile .rt-count { flex: none; }
+.recap-tile .rt-count::before { content: '/\00a0'; }
 .recap-members { display: flex; flex-direction: column; gap: 8px; }
 .recap-member { cursor: pointer; }
 .recap-member:hover { border-color: #6a6a6a; }
@@ -1872,6 +2050,7 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
   display: inline-flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-radius: 999px;
   background: #141414; border: 1px solid #242424;
+  color: #d8d8d8;   /* the heart is a text glyph: without ink it fell through to UA default */
 }
 .pulse-chip .pc-emoji { font-size: 16px; filter: grayscale(0.35); }
 .pulse-chip .pc-count { font-size: 13px; color: #d8d8d8; }
@@ -1991,6 +2170,15 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
 }
 .scope-chip:hover { border-color: #777; }
 .scope-chip.active { background: #fff; color: #000; border-color: #fff; }
+/* free-text entry for a tag the roster does not carry yet. dashed so it reads as
+   a field, but sized to sit on the same line as the chips. */
+.scope-new {
+  width: 92px; margin: 0; padding: 6px 9px;
+  font-size: 10px; letter-spacing: .05em;
+  background: none; color: #c9c9c9;
+  border: 1px dashed #3c3c3c; border-radius: 6px;
+}
+.scope-new:focus { border-color: #777; }
 
 #d-owner { display: flex; gap: 24px; margin-top: 18px; }
 #d-owner button { color: #cfcfcf; text-decoration: underline; text-underline-offset: 4px; }
@@ -2080,12 +2268,18 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
     left: 10px; right: 10px; bottom: 12px; transform: none; width: auto;
     justify-content: space-between; padding: 5px; gap: 2px;
   }
-  .pill-nav button { flex: 1 1 0; min-width: 0; padding: 12px 4px; font-size: 12px; text-align: center; }
+  /* min-height 44 is the touch minimum; padding drops so the bar stays under
+     60px and never reaches the rail sitting at bottom:72px. */
+  .pill-nav button {
+    flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 4px; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
   /* secondary controls form a rail just ABOVE the nav bar, clear of it */
   .view-toggles { bottom: 72px; left: 12px; }
-  #settings-btn { bottom: 72px; left: auto; right: 72px; }
   #settings-panel { bottom: 132px; left: 12px; right: auto; width: calc(100vw - 24px); max-width: 300px; }
-  #filter-btn { width: 50px; height: 50px; font-size: 12px; bottom: 72px; right: 12px; }
+  /* no fixed width: at 50px the label overflowed the pill. it sizes to its label,
+     which applyFilter rewrites to "Filter (n)" whenever tags are active. */
+  #filter-btn { height: 50px; padding: 0 12px; font-size: 12px; bottom: 72px; right: 12px; }
   #filter-panel { bottom: 132px; right: 12px; left: auto; width: calc(100vw - 24px); max-width: 320px; }
   /* overlay headers (photo detail, people, albums, atlas, room, admin, recap):
      let the back / prev-next / profile controls wrap instead of colliding */
@@ -2103,6 +2297,13 @@ body[data-theme='light'] .modal-box::-webkit-scrollbar-thumb { background: #b6b6
   .admin-actions { width: 100%; justify-content: flex-start; }
   .inline-form { flex-direction: column; align-items: stretch; }
   .inline-form .pill-white { width: 100%; }
+}
+
+/* the rail and the Filter pill share one 50px row on phones. at 360px the pill
+   grows to "Filter (n)" and runs into the rail, so tighten the rail there. */
+@media (max-width: 380px) {
+  .view-toggles { gap: 6px; }
+  #upload-btn { padding: 0 14px; }
 }
 
 /* ================================================================
@@ -2324,13 +2525,24 @@ html, body {
   #flat-view, #atlas, #detail, #people, #albums, #community-room, #community-admin, #recap-overlay { overflow-x: hidden; }
   /* keep the fixed bottom bars clear of the iPhone home indicator (notch-safe) */
   .pill-nav { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
-  .view-toggles, #settings-btn, #filter-btn { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .view-toggles, #filter-btn { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  #recentre-btn { bottom: calc(138px + env(safe-area-inset-bottom, 0px)); min-height: 44px; }
 
   /* --- flat grid / list view --- */
   .flat-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .flat-bar { gap: 8px; }
   .flat-bar .search { min-width: 0; flex: 1 1 100%; }
   .flat-bar select { flex: 1 1 100%; width: 100%; padding: 12px 16px; }
+
+  /* --- detail --- */
+  /* the caption pair had no breakpoint: two tracks of a 390px screen left ~145px
+     of column for prose, which is unreadable. one column, one rhythm. */
+  .d-cols { grid-template-columns: 1fr; gap: 20px; }
+  /* a fixed 62vh stage left a landscape photo filling 45% of its frame with a
+     290px black band under it. let the stage take the picture's height instead,
+     still capped so a tall portrait cannot push the actions off the screen. */
+  .d-hero { height: auto; max-height: min(62vh, 620px); }
+  .d-hero img { max-height: min(62vh, 620px); }
 
   /* --- atlas --- */
   .atlas-grid { grid-template-columns: 1fr; gap: 12px; }
@@ -2359,6 +2571,7 @@ html, body {
   .people-title { margin: 3vh 0 22px; }
 
   /* --- modals & panels --- */
+  .pick-album-row.invite-row .pa-copy-btn.mono { min-height: 44px; }
   .modal-head button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; margin: -8px -8px -8px 0; font-size: 18px; }
   #notifications-panel {
     top: 68px; right: 10px; left: 10px; width: auto; max-width: none;
@@ -2368,10 +2581,14 @@ html, body {
   #onboarding-skip { display: block; width: 100%; padding: 12px 0; min-height: 44px; }
 
   /* --- hub "More" sheet: re-expose the chips CSS hides on phones --- */
+  /* the desktop chip row is hidden on phones, so this button also carries the
+     room's name - hence the ellipsis and the block display it needs to work. */
   #hud-more-btn {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-block;
     position: fixed; top: 20px; left: 72px; z-index: 12;
-    min-height: 44px; padding: 8px 16px;
+    min-height: 44px; padding: 8px 16px; line-height: 28px;
+    max-width: calc(100vw - 92px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     border-radius: 999px; border: 1px solid #333;
     background: rgba(20,20,20,0.9); color: #fff;
     font-size: 13px; letter-spacing: .03em;
