@@ -16,6 +16,9 @@ node_modules/
 npm-debug.log*
 *.log
 
+# Deployment notes - kept locally, not published
+DEPLOY.md
+
 # OS
 .DS_Store
 Thumbs.db
