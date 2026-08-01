@@ -1,27 +1,26 @@
-# Deploying to Vercel
+# Deploying
 
-This app was originally a single always-on Node process that kept all state in
-`data/*.json` and uploads on local disk. It now supports a stateless, serverless
-deployment (Vercel) through a pluggable data driver and Supabase.
+The app runs as **one long-lived Node process** (`node server.js`) on Render, with
+state in Supabase so a deploy or restart never loses anything.
 
 - **Data** (users, posts, communities, sessions, ...) -> Supabase Postgres, one
   JSONB blob per collection in a `kv` table (`STORE_DRIVER=supabase`).
-- **Uploads** (photos, avatars, covers) -> Supabase Storage (already supported).
-- **API** -> one serverless function (`api/index.js`) wrapping the existing
-  handler; all `/api/*` paths reach it via the `rewrites` block in `vercel.json`
-  (`/api/:path* -> /api/index`), not Vercel filesystem path segments. **Static**
-  frontend -> Vercel's CDN.
+- **Uploads** (photos, avatars, covers) -> Supabase Storage.
+- **Static frontend + API** -> both served by the same process. Security headers
+  and the CSP are set in `lib/static.js`, so they travel with the app rather than
+  living in a host config file.
 
-Local dev is unchanged: `node server.js` still uses the file driver and disk.
+Local dev is unchanged: `node server.js` with no env set uses the file driver and
+local disk (`data/*.json`, `assets/uploads/`).
 
 ## 1. Create the KV table in Supabase (and lock it down)
 
-This table holds your entire database as blobs, **including password hashes and
-live session tokens**. Every table in Supabase's `public` schema is auto-exposed
-through the REST API, and RLS is OFF by default, so without the lock-down below
-anyone with the project's anon key could read `/rest/v1/kv` and dump those
-secrets. The server uses the **service-role** key, which bypasses RLS, so turning
-RLS on with no policies denies everyone else while the app keeps working.
+This table holds your entire database as blobs, **including live session tokens**.
+Every table in Supabase's `public` schema is auto-exposed through the REST API, and
+RLS is OFF by default, so without the lock-down below anyone with the project's anon
+key could read `/rest/v1/kv` and dump them. The server uses the **service-role** key,
+which bypasses RLS, so turning RLS on with no policies denies everyone else while the
+app keeps working.
 
 In the Supabase SQL editor, run all of this:
 
@@ -43,7 +42,7 @@ Verify the lock-down after setup (must return a permission error or `[]`, never 
 curl -s "https://YOUR-PROJECT.supabase.co/rest/v1/kv?select=key" -H "apikey: YOUR-ANON-KEY"
 ```
 
-## 2. Seed it with your existing data (optional but recommended)
+## 2. Seed it with your existing data (optional)
 
 From the project root, with your Supabase creds set:
 
@@ -53,9 +52,17 @@ SUPABASE_URL=https://YOUR-PROJECT.supabase.co SUPABASE_KEY=YOUR-SERVICE-ROLE-KEY
 
 (It also reads `.supabase.json` if present.) Re-runnable; it upserts by key.
 
-## 3. Set Environment Variables in Vercel
+## 3. Render service settings
 
-Project Settings -> Environment Variables (Production + Preview):
+Create a **Web Service** from the repo.
+
+| Setting | Value |
+|---|---|
+| Build command | *(none - there is no build step)* |
+| Start command | `node server.js` |
+| Instances | **1** (see the warning below) |
+
+Environment variables:
 
 | Name | Value |
 |------|-------|
@@ -68,6 +75,8 @@ Project Settings -> Environment Variables (Production + Preview):
 | `TRUST_PROXY` | `1` |
 | `SUPABASE_KV_TABLE` | `kv` (only if you named it differently) |
 | `ADMIN_PROVIDER` | `google` (default; the provider trusted for the owner link) |
+
+`PORT` is supplied by Render automatically; the server reads it.
 
 **The two Supabase keys are not interchangeable.** `SUPABASE_KEY` is the
 service-role **secret** (server-only, bypasses RLS). `SUPABASE_ANON_KEY` is the
@@ -83,35 +92,27 @@ address is not enough to claim admin. For that to hold, the Supabase project sho
 keep **Confirm email ON** and ideally disable the email/password provider so Google
 is the only way in.
 
-Never set these with a client-exposed prefix and never commit `.supabase.json`.
+Never commit `.supabase.json` or a real `.env`.
 
 `TRUST_PROXY=1` tells the app to read the client IP for rate-limiting from the
-rightmost `X-Forwarded-For` hop the platform appends. Do **not** set
-`TRUST_CF_IP=1` on Vercel: the `CF-Connecting-IP` header is only trustworthy when a
-real Cloudflare edge fronts the app (e.g. Cloudflare -> Render). On Vercel that
-header is raw client input, so trusting it would let anyone forge a new IP per
-request and bypass every per-IP rate limit.
+rightmost `X-Forwarded-For` hop Render appends. Do **not** set `TRUST_CF_IP=1`
+unless a real Cloudflare edge actually fronts the app: without one,
+`CF-Connecting-IP` is raw client input, so trusting it would let anyone forge a new
+IP per request and bypass every per-IP rate limit.
 
-## 4. Deploy
+## 4. Keep it at a single instance
 
-```bash
-npm i -g vercel
-vercel        # preview
-vercel --prod # production
-```
+The KV driver writes an **entire collection** per change and each process holds its
+own in-memory copy. Two instances would each flush their own stale snapshot and
+silently overwrite each other's writes. Do not enable horizontal autoscaling. If you
+outgrow one instance, move to row-level Postgres tables first.
 
-Vercel auto-detects: static files at the root are served by the CDN, and
-`api/index.js` handles `/api/*`. `vercel.json` reapplies the CSP/security
-headers to the static routes and gives the function a 15s timeout (the geocode
-call can take up to 5s).
+## What to verify after a deploy
 
-## What to verify after the first deploy
-
-1. The site loads and you can register / log in (proves the Supabase KV data path
-   and cross-instance sessions).
+1. The site loads and you can sign in with Google (proves the Supabase KV data path).
 2. Upload a photo (proves Supabase Storage; the image URL should be
    `https://*.supabase.co/...`).
-3. Reload after a change (proves writes persisted to Supabase, not lost).
+3. Reload after a change (proves writes persisted to Supabase, not just memory).
 
 ## Known limitations / notes
 
@@ -119,11 +120,6 @@ call can take up to 5s).
   collection per change, so two people mutating the same collection at the exact
   same moment can lose one update. Fine for personal scale; move to row-level
   Postgres tables if you need real concurrency.
-- **Per-instance rate limits and geocode cache.** These live in each function
-  instance's memory, so limits are per-instance and the geocode cache is cold on
-  new instances. Acceptable for low traffic; move to a shared KV/Redis otherwise.
-- **Cold-start load.** Each new function instance loads all collections once. Fine
-  while the dataset is small.
 - **Photo URLs are public.** Uploaded images live in a public Supabase Storage
   bucket (and, on the file driver, under `/assets/`), so a photo URL is readable by
   anyone who has the link (filenames are random, not enumerable). This matches the
@@ -131,12 +127,13 @@ call can take up to 5s).
   would require serving image bytes through the authenticated API instead.
 - **Writes are confirmed after the response.** A mutating request sends its result,
   then flushes to the store; if that flush fails (e.g. Supabase is down) the client
-  sees success but the change may not persist until a later request retries. Fine at
-  personal scale; flush-before-respond would be needed for stronger durability.
+  sees success but the change may not persist until a later request retries. The
+  process also drains pending writes on `SIGTERM`, which is what Render sends on
+  every deploy, so a normal restart does not drop queued writes.
 
-## Alternative: a host that runs a real process (simpler, no rewrite)
+## Running it somewhere else
 
-If you would rather not depend on serverless, Render / Railway / Fly.io run
-`node server.js` as a persistent process. Keep `STORE_DRIVER=file` with a
-persistent disk mounted at `data/` (and Supabase Storage for uploads), set
-`PORT`/`HOST` from the platform, and you are done with almost no other changes.
+Any host that runs a persistent Node process works the same way - Railway, Fly.io, a
+VPS. Set the same environment variables and start `node server.js`. To run without
+Supabase entirely, leave `STORE_DRIVER` unset (file driver) and mount a persistent
+disk at `data/`; uploads then land in `assets/uploads/` and must be on that disk too.

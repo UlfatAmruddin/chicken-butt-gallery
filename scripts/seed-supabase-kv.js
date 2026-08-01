@@ -1,6 +1,6 @@
 'use strict';
 /* One-time seed: copy the local data/*.json collections into the Supabase KV
-   table so a fresh Vercel deploy starts with your existing gallery. Safe to
+   table so a fresh deploy starts with your existing gallery. Safe to
    re-run (upserts by key).
 
    Usage (from the project root, with your Supabase creds available):
